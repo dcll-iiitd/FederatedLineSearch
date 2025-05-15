@@ -5,9 +5,9 @@
 # Initiate the NN
 
 from sys import float_info
-from utils_data_new import *
-from utils_models_new import *
-from utils_general_new import *
+from utils_data import *
+from utils_models import *
+from utils_general import *
 import time 
 import yaml
 

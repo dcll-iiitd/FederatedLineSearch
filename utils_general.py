@@ -1,4 +1,4 @@
-from utils_libs_new import *
+from utils_libs import *
 from SLS.sls import Sls
 def test_img(net_g, datatest, args):
     net_g.eval()
@@ -364,10 +364,8 @@ class LocalUpdate_Adam(object):
         
     def train_and_sketch(self, net):
         net.train()
-
-        # optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum = 0.9, weight_decay=self.weight_decay)
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01, betas=(0.9, 0.999), eps=1e-1, weight_decay=0, amsgrad=False, foreach=None, maximize=False, capturable=False, differentiable=False, fused=None)
-        # optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum = 0.9, weight_decay=self.weight_decay)
+        
 
 
         prev_net = copy.deepcopy(net)
@@ -529,7 +527,7 @@ class LocalUpdate_Sls(object):
     def train_and_sketch(self, net):
         net.train()
 
-        # optimizer = torch.optim.SGD(net.parameters(), lr=0.01, weight_decay=self.weight_decay)
+        
         optimizer = Sls(net.parameters())
 
         prev_net = copy.deepcopy(net)
@@ -761,55 +759,7 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c):
          grad = local.train_and_sketch(copy.deepcopy(net_glob))
 
          return grad
-    elif(alg == 'fedadam'):
-        
-        local = LocalUpdate_Adam(args, args_hyperparameters, dataset=dataset)
-
-        grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-        return grad
-    elif(alg == 'fednadam'):
-        local = LocalUpdate_Nadam(args, args_hyperparameters, dataset=dataset)
-
-        grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-        return grad
-    elif(alg == 'fedradam'):
-         local = LocalUpdate_Radam(args, args_hyperparameters, dataset=dataset)
-
-         grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-         return grad
-    elif(alg == 'fedrmsprop'):
-         local = LocalUpdate_RmsProp(args, args_hyperparameters, dataset=dataset)
-
-         grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-         return grad
-    elif(alg=='fedadagrad'):
-         local = LocalUpdate_Adagrad(args, args_hyperparameters, dataset=dataset)
-
-         grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-         return grad
-    elif(alg == 'fedadadelta'):
-         local = LocalUpdate_Adadelta(args, args_hyperparameters, dataset=dataset)
-
-         grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-         return grad
-    elif(alg == 'fedamsgrad'):
-         local = LocalUpdate_Amsgrad(args, args_hyperparameters, dataset=dataset)
-
-         grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-         return grad
-    elif(alg == 'fedadamax'):
-         local = LocalUpdate_Adamax(args, args_hyperparameters, dataset=dataset)
-
-         grad = local.train_and_sketch(copy.deepcopy(net_glob))
-
-         return grad
+   
        
   
     
