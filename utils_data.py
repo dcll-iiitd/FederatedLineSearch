@@ -2,19 +2,11 @@ from utils_libs import *
 import os
 import json
 
-# Define character vocabulary (a-z, A-Z, punctuation, etc.)
 
-
-# ------------------------------
-# 1. Character Vocabulary
-# ------------------------------
 ALL_CHARS = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ,.;!?'-\"\n")
 CHAR2IDX = {ch: idx for idx, ch in enumerate(ALL_CHARS)}
 IDX2CHAR = {idx: ch for ch, idx in CHAR2IDX.items()}
 
-# ------------------------------
-# 2. Helper Functions
-# ------------------------------
 def process_x(raw_x_batch, char_to_idx):
     x_batch = [[char_to_idx.get(ch, 0) for ch in word] for word in raw_x_batch]
     return np.array(x_batch)
@@ -23,9 +15,6 @@ def process_y(raw_y_batch, char_to_idx):
     y_batch = [char_to_idx.get(c, 0) for c in raw_y_batch]
     return np.array(y_batch)
 
-# ------------------------------
-# 3. Shakespeare Dataset Class
-# ------------------------------
 class ShakespeareLeafDataset(Dataset):
     def __init__(self, data, char_to_idx, seq_len=20):
         x_batch = process_x(data['x'], char_to_idx)
@@ -43,11 +32,11 @@ class ShakespeareLeafDataset(Dataset):
 
 
 
-# Example usage:
+
 
 class FEMNISTLeafDataset(Dataset):
     def __init__(self, user_data, transform=None):
-        self.x = torch.tensor(user_data["x"], dtype=torch.float32)  # [N, 1, 28, 28]
+        self.x = torch.tensor(user_data["x"], dtype=torch.float32) 
         self.y = torch.tensor(user_data["y"], dtype=torch.long)
         self.transform = transform
 
@@ -296,8 +285,8 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
     if datatype == 'shakespeare':
         
 
-        train_f = '/home/somya/new_project/data/shakespeare/all_data_niid_2_keep_0_train_8.json'
-        test_f = '/home/somya/new_project/data/shakespeare/all_data_niid_2_keep_0_test_8.json'
+        train_f = 'shakespeare/all_data_niid_2_keep_0_train_8.json'
+        test_f = 'shakespeare/all_data_niid_2_keep_0_test_8.json'
 
         
 
@@ -313,11 +302,7 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
         clients_data = train_json['user_data']
         test_clients_data = test_json['user_data']
         users = train_json['users']
-        # After reading train.json and test.json:
-
-        # Suppose you already have:
-        # train_json, test_json loaded
-        # (train_json['user_data'], test_json['user_data'])
+       
 
         # Build global char_to_idx
         all_text = ''.join(''.join(v['x']) for v in train_json['user_data'].values())
@@ -343,8 +328,8 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
         dataset_test_global = torch.utils.data.ConcatDataset(dataset_test)
 
     if datatype == 'femnist':
-        train_dir = '/home/somya/new_project/femnist_data/train'
-        test_dir = '/home/somya/new_project/femnist_data/test'
+        train_dir = 'femnist_data/train'
+        test_dir = 'femnist_data/test'
 
         train_files = sorted([os.path.join(train_dir, f) for f in os.listdir(train_dir) if f.endswith('.json')])
         test_files = sorted([os.path.join(test_dir, f) for f in os.listdir(test_dir) if f.endswith('.json')])

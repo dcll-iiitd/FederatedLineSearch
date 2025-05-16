@@ -84,7 +84,7 @@ args={
 
 
 net_glob_org = get_model(model,n_c).to(args['device'])
-# net_glob_org = get_model(model,n_c)
+
 
 
 
