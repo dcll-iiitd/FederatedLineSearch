@@ -29,4 +29,4 @@ Explanation of arguments:
 
 ### ToyProblem
 
-The Toy_problem folder contains code for comparing FedAvg, FedExp, and FedExpSls algorithms on a 2D toy problem.
+The Toy_problem folder contains code for comparing FedAvg, FedExp, FedSls and FedExpSls algorithms on a 2D toy problem.
