@@ -294,7 +294,7 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
         dataset_test = []
         user_ids = []
 
-        # for train_f, test_f in zip(train_files, test_files):
+        
         with open(train_f, 'r') as f:
                 train_json = json.load(f)
         with open(test_f, 'r') as f:
@@ -304,15 +304,12 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
         users = train_json['users']
        
 
-        # Build global char_to_idx
+      
         all_text = ''.join(''.join(v['x']) for v in train_json['user_data'].values())
         vocab = sorted(list(set(all_text)))
         vocab_size = len(vocab)
         char_to_idx = {ch: idx for idx, ch in enumerate(vocab)}
-
-        # Now for each client:
-       
-
+    
 
         for client_id in train_json["users"]:
                 user_ids.append(client_id)
@@ -334,7 +331,7 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
         train_files = sorted([os.path.join(train_dir, f) for f in os.listdir(train_dir) if f.endswith('.json')])
         test_files = sorted([os.path.join(test_dir, f) for f in os.listdir(test_dir) if f.endswith('.json')])
 
-    # Limit to n_client clients
+   
         train_files = train_files[:n_client]
         test_files = test_files[:n_client]
   
@@ -350,7 +347,6 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
           for client_id in train_json["user_data"]:
               user_ids.append(client_id)
               train_data = train_json["user_data"][client_id]
-            #   test_data = test_json["user_data"].get(client_id, {'x': [], 'y': []})
               test_data = test_json["user_data"][client_id]
 
               train_dataset = FEMNISTLeafDataset(train_data)
@@ -365,63 +361,63 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
 
     
 
-    # if(datatype=='EMNIST'):
+    if(datatype=='EMNIST'):
 
       
-    #   with ZipFile('emnist_dataset_umifa.npy.zip', 'r') as f:
-    #     f.extractall()
+      with ZipFile('emnist_dataset_umifa.npy.zip', 'r') as f:
+        f.extractall()
 
 
-    #   emnist_data = np.load('emnist_dataset_umifa.npy', allow_pickle= True).item()
-    #   dataset_train_emnist = emnist_data['dataset_train']
-    #   dataset_test_emnist = emnist_data['dataset_test']
-    #   dict_users_emnist = emnist_data['dict_users']
-    #   emnist_clients = list(dict_users_emnist.keys())
+      emnist_data = np.load('emnist_dataset_umifa.npy', allow_pickle= True).item()
+      dataset_train_emnist = emnist_data['dataset_train']
+      dataset_test_emnist = emnist_data['dataset_test']
+      dict_users_emnist = emnist_data['dict_users']
+      emnist_clients = list(dict_users_emnist.keys())
 
-    #   x_train = dataset_train_emnist[:][0]
-    #   y_train = dataset_train_emnist[:][1]
-    #   x_train = x_train[:,None]
+      x_train = dataset_train_emnist[:][0]
+      y_train = dataset_train_emnist[:][1]
+      x_train = x_train[:,None]
 
-    #   dataset_train_emnist_new = TensorDataset(x_train,y_train)
+      dataset_train_emnist_new = TensorDataset(x_train,y_train)
 
-    #   x_test = dataset_test_emnist[:][0]
-    #   y_test = dataset_test_emnist[:][1]
-    #   x_test = x_test[:,None]
+      x_test = dataset_test_emnist[:][0]
+      y_test = dataset_test_emnist[:][1]
+      x_test = x_test[:,None]
 
-    #   dataset_test_emnist_new = TensorDataset(x_test,y_test)
+      dataset_test_emnist_new = TensorDataset(x_test,y_test)
 
-    #   dataset_test_global = dataset_test_emnist_new
+      dataset_test_global = dataset_test_emnist_new
 
-    #   dataset_train=[]
-    #   dataset_test = []
+      dataset_train=[]
+      dataset_test = []
 
-    #   n = len(emnist_clients)
+      n = len(emnist_clients)
 
-    #   len_test = int(len(dataset_test_emnist)/n)
+      len_test = int(len(dataset_test_emnist)/n)
 
 
-    #   ctr = 0
+      ctr = 0
 
-    #   for i in range(n):
+      for i in range(n):
           
-    #     ind = dict_users_emnist[i]
+        ind = dict_users_emnist[i]
 
-    #     x_train = dataset_train_emnist_new[ind][0]
-    #     y_train = dataset_train_emnist_new[ind][1]
+        x_train = dataset_train_emnist_new[ind][0]
+        y_train = dataset_train_emnist_new[ind][1]
 
-    #     x_test = dataset_test_emnist_new[i*len_test:(i+1)*len_test][0]
-    #     y_test = dataset_test_emnist_new[i*len_test:(i+1)*len_test][1]
+        x_test = dataset_test_emnist_new[i*len_test:(i+1)*len_test][0]
+        y_test = dataset_test_emnist_new[i*len_test:(i+1)*len_test][1]
 
         
 
-    #     n_i = len(ind)
+        n_i = len(ind)
 
-    #     dataset_train_torch = TensorDataset(x_train,y_train)
-    #     dataset_test_torch = TensorDataset(x_test,y_test)
+        dataset_train_torch = TensorDataset(x_train,y_train)
+        dataset_test_torch = TensorDataset(x_test,y_test)
 
 
-    #     dataset_train.append(dataset_train_torch)
-    #     dataset_test.append(dataset_test_torch)
+        dataset_train.append(dataset_train_torch)
+        dataset_test.append(dataset_test_torch)
 
     return dataset_train, dataset_test_global
 

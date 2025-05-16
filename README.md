@@ -1,9 +1,6 @@
-
-
 ### Requirements
 
 Requirements can be found in the requirements.txt file.
-
 
 ### Instructions
 
@@ -15,11 +12,11 @@ python main.py --seed 0 --algorithm "fedavg" --dataset "CIFAR10" --model "resnet
 
 Explanation of arguments:
 1. `seed`: Choice of seed to fix randomness in experiment.
-2. `algorithm`: Choice of algorithm. Possible options are `fedavg`, `fedexp`,`scaffold`, `scaffold(exp)`, `fedprox`, `fedprox(exp)`, `fedadam`, `fedadagrad`, `fedavgm`, `fedavgm(exp)`.
+2. `algorithm`: Choice of algorithm. Possible options are `fedavg`, `fedexp`,`scaffold`, `scaffold(exp)`, `fedprox`, `fedprox(exp)`, `fedadam`, `fedadagrad`, `fedavgm`, `fedavgm(exp)`,`fedsls`,`fedexpsls`.
    
-3. `dataset`: Choice of dataset. Possible options are `CIFAR10`,`CIFAR100`,`CINIC10`.
+3. `dataset`: Choice of dataset. Possible options are `CIFAR10`,`CIFAR100`,`femnist`.
 
-4. `model`: Choice of neural network model. Possible options are `resnet18`, `CNN` (for CIFAR dataset), `EMNIST_CNN` (for EMNIST dataset).
+4. `model`: Choice of neural network model. Possible options are `resnet18`, `CNN` (for CIFAR dataset), `LOGISTIC_REGRESSION` (for femnist dataset),`LSTM`(for Shakespeare dataset).
 
 5. `num_clients`: Total number of clients in FL system.
 
@@ -30,10 +27,6 @@ Explanation of arguments:
 8. `alpha`: Choice of alpha parameter for the Dirichlet distribution used to create heterogeneity in the client datasets for CIFAR and CINIC datasets.
 
 
-Details of these arguments to reproduce our experiments can be found in Section 6 of the paper and Appendices D.2 and D.3.
+### ToyProblem
 
-Code for the synthetic linear regression experiment can be found in linear_regression.ipynb
-    
-    
-
-
+The Toy_problem folder contains code for comparing FedAvg, FedExp, and FedExpSls algorithms on a 2D toy problem.
