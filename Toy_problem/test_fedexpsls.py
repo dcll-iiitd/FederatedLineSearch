@@ -24,12 +24,12 @@ def F2(w):
 # Gradient of the objective functions
 def grad_F1(w):
     return np.array([2* ( w[0] + w[1] - 3), 2 * (w[0] + w[1] - 3)])
-
 def grad_F2(w):
     return np.array([2* ( w[0] + 2*w[1] - 3), 4 * ( w[0] + 2*w[1] - 3)])
+
 def F_global(w):
     return 0.5 * (F1(w) + F2(w))
-# Gradient descent settings
+
 w_init = np.array([0.24,1])  # initial weights
 learning_rate = 0.01
 num_steps = 10

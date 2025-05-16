@@ -32,8 +32,7 @@ w2 = w_init
 def compute_gradient_client1(w1):
  w_local = w1
  for i in range(num_steps):
-    grad = grad_F1(w1)
-    # print(F1(w1))   
+    grad = grad_F1(w1) 
     w_local = w_local - learning_rate * grad
  return w1-w_local
 
@@ -43,7 +42,6 @@ def compute_gradient_client2(w2):
  w_local = w2
  for i in range(num_steps):
     grad = grad_F2(w2)
-    # print(F2(w1))   
     w_local = w_local - learning_rate * grad
  return w2-w_local
     

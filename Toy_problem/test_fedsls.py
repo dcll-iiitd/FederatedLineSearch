@@ -35,7 +35,7 @@ w_init = np.array([0.24,1])  # initial weights
 num_steps = 10
 Rounds = 50
 
-# Tracking variables
+
 weights = [w_init]
 w_global = w_init
 w1 = w_init
