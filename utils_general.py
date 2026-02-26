@@ -534,7 +534,7 @@ class LocalUpdate_Sls(object):
 
         batch_loss = []
         step_count = 0
-
+        total_count =0
         while(True):
           for batch_idx, (images, labels) in enumerate(self.ldr_train):
               images, labels = images.to(self.args['device']), labels.to(self.args['device'])
@@ -544,7 +544,12 @@ class LocalUpdate_Sls(object):
               output = net(images)
               # labels = torch.tensor(labels, dtype=torch.long)
               # log_probs = output[-1]
-              
+              def closure():
+                    optimizer.zero_grad()
+                    output = net(images)
+                    loss = self.loss_func(output, labels)
+                    # loss.backward()
+                    return loss
               
               loss = self.loss_func(output, labels)
               loss.backward()
@@ -552,7 +557,8 @@ class LocalUpdate_Sls(object):
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
             
-              optimizer.step()
+              count = optimizer.step(closure)
+              total_count+=count
               batch_loss.append(loss.item())
               step_count=step_count+1
               if(step_count >= self.args['cp']):
@@ -561,13 +567,12 @@ class LocalUpdate_Sls(object):
             break
 
         with torch.no_grad():
-
                 vec_curr = parameters_to_vector(net.parameters())
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
             
-        return model_to_return
+        return model_to_return,total_count
 class LocalUpdate_scaffold(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -732,10 +737,10 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c):
     if(alg == 'fedexpsls' or alg == 'fedsls'):
         local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
 
-        grad = local.train_and_sketch(copy.deepcopy(net_glob))
+        grad,count = local.train_and_sketch(copy.deepcopy(net_glob))
 
-        return grad
-    if(alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)'):
+        return grad,count
+    if(alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)' or alg=='fedadam'):
 
         local = LocalUpdate(args, args_hyperparameters, dataset=dataset)
 
