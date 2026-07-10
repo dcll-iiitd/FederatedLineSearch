@@ -534,7 +534,7 @@ class LocalUpdate_Sls(object):
 
         batch_loss = []
         step_count = 0
-
+        total_count =0
         while(True):
           for batch_idx, (images, labels) in enumerate(self.ldr_train):
               images, labels = images.to(self.args['device']), labels.to(self.args['device'])
@@ -544,7 +544,12 @@ class LocalUpdate_Sls(object):
               output = net(images)
               # labels = torch.tensor(labels, dtype=torch.long)
               # log_probs = output[-1]
-              
+              def closure():
+                    optimizer.zero_grad()
+                    output = net(images)
+                    loss = self.loss_func(output, labels)
+                    # loss.backward()
+                    return loss
               
               loss = self.loss_func(output, labels)
               loss.backward()
@@ -552,7 +557,8 @@ class LocalUpdate_Sls(object):
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
             
-              optimizer.step()
+              count = optimizer.step(closure)
+              total_count+=count
               batch_loss.append(loss.item())
               step_count=step_count+1
               if(step_count >= self.args['cp']):
@@ -561,13 +567,12 @@ class LocalUpdate_Sls(object):
             break
 
         with torch.no_grad():
-
                 vec_curr = parameters_to_vector(net.parameters())
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
             
-        return model_to_return
+        return model_to_return,total_count
 class LocalUpdate_scaffold(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -590,6 +595,7 @@ class LocalUpdate_scaffold(object):
 
 
         prev_net = copy.deepcopy(net)
+        client_control = mem_mat[idx].to(self.args['device'])
         
         eta = self.lr
 
@@ -606,14 +612,8 @@ class LocalUpdate_scaffold(object):
                 loss = self.loss_func(log_probs, labels)
 
 
-                state_params_diff = c-mem_mat[idx]
-                local_par_list = None
-                for param in net.parameters():
-                    if not isinstance(local_par_list, torch.Tensor):
-                    # Initially nothing to concatenate
-                        local_par_list = param.reshape(-1)
-                    else:
-                        local_par_list = torch.cat((local_par_list, param.reshape(-1)), 0)
+                state_params_diff = c-client_control
+                local_par_list = parameters_to_vector(net.parameters())
                 
                 loss_algo = torch.sum(local_par_list * state_params_diff)
                 loss = loss + loss_algo
@@ -644,7 +644,8 @@ class LocalUpdate_scaffold(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 
-                mem_mat[idx] = (mem_mat[idx]-c) - params_delta_vec/(step_count*eta)
+                new_client_control = (client_control-c) - params_delta_vec/(step_count*eta)
+                mem_mat[idx].copy_(new_client_control.detach().cpu())
 
 
                 model_to_return = params_delta_vec
@@ -728,13 +729,13 @@ class LocalUpdate_fedprox(object):
 
 
 
-def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c):
+def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_mat=None):
     if(alg == 'fedexpsls' or alg == 'fedsls'):
         local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
 
-        grad = local.train_and_sketch(copy.deepcopy(net_glob))
+        grad,count = local.train_and_sketch(copy.deepcopy(net_glob))
 
-        return grad
+        return grad,count
     if(alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)'):
 
         local = LocalUpdate(args, args_hyperparameters, dataset=dataset)
@@ -747,7 +748,7 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c):
 
          local = LocalUpdate_scaffold(args, args_hyperparameters, dataset=dataset)
 
-        #  grad = local.train_and_sketch(copy.deepcopy(net_glob),idx,mem_mat,c)
+         grad = local.train_and_sketch(copy.deepcopy(net_glob),idx,mem_mat,c)
 
          return grad
     

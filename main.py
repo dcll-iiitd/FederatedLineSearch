@@ -10,6 +10,7 @@ from utils_models import *
 from utils_general import *
 import time 
 import yaml
+from datetime import datetime #added 18 feb
 
 parser = argparse.ArgumentParser()
 
@@ -333,6 +334,13 @@ start_time = time.time()
 
 for alg in algs:
 
+      # ---- Wallclock timers (per algorithm run) ---- added 18 feb
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    alg_run_start = time.time()
+    print(f"[WALLCLOCK] alg={alg} run_start_iso={datetime.now().isoformat()} run_start_ts={alg_run_start}", flush=True)
+
+    prev_round_end = alg_run_start #added 18 feb
 
     dict_results[alg] = {}
     
@@ -359,8 +367,10 @@ for alg in algs:
 
     
     grad_mom = torch.zeros(d).to(args['device'])
-    
-    mem_mat = torch.zeros((n, d)).to(args['device'])  ###needed for scaffold
+    if(alg=='scaffold' or alg=='scaffold(exp)'):
+        mem_mat = torch.zeros((n, d), device='cpu')  ### needed for scaffold
+    else:
+        mem_mat = None
     
     w_vec_estimate = torch.zeros(d).to(args['device'])
     
@@ -380,6 +390,12 @@ for alg in algs:
         
 
         print ("Algo ", alg, " Round No. " , t)
+
+                # ---- Wallclock: round start ---- #added 18 feb
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        round_start = time.time() #added 18 feb
+
 
         local_lr = decay*local_lr
         epsilon = decay*decay*epsilon
@@ -411,16 +427,21 @@ for alg in algs:
 
         
         if(alg=='scaffold' or alg=='scaffold(exp)'):
+            c_cpu = torch.zeros((d,), device='cpu')
             for i in range(n):
-                c = c+ p[i]*mem_mat[i]
+                c_cpu = c_cpu + p[i]*mem_mat[i]
+            c = c_cpu.to(args['device'])
 
             
         
-        end_time = None
+        #end_time = None #commented 18 feb
+                # ---- Wallclock: client/grad phase ----
+        grad_phase_start = time.time() #added 18 feb
+
         for i in ind:
 
             
-            grad = get_grad(copy.deepcopy(net_glob),args, args_hyperparameters, dataset_train[i], alg, i,  mem_mat, c)
+            grad = get_grad(copy.deepcopy(net_glob),args, args_hyperparameters, dataset_train[i], alg, i, c, mem_mat)
             
             if isinstance(grad, tuple):
                   grad = grad[0]
@@ -430,6 +451,13 @@ for alg in algs:
             grad_avg = grad_avg + p[i]*grad
             
             p_sum += p[i]
+
+        # added 18 feb
+        if torch.cuda.is_available(): 
+          torch.cuda.synchronize()
+        grad_phase_end = time.time()
+        grad_phase_sec = grad_phase_end - grad_phase_start
+
 
 
         
@@ -505,7 +533,8 @@ for alg in algs:
             vector_to_parameters(w_vec_estimate,net_glob.parameters())
         
         
-        
+        eval_phase_start = time.time() #added 18 feb
+
         net_eval = copy.deepcopy(net_glob)
 
         if(alg=='fedexp' or alg=='scaffold(exp)' or alg=='fedprox(exp)' or alg=='fedavgm(exp)' or alg == 'fedexpsls'):
@@ -535,4 +564,29 @@ for alg in algs:
 
         print ("Test Loss", sum_loss_test, "Test Accuracy ", sum_acc_test)
         
-       
+        #added 18 feb
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        eval_phase_end = time.time()
+        eval_phase_sec = eval_phase_end - eval_phase_start
+
+                # ---- Wallclock: round end ----
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        round_end = time.time()
+
+        round_time_sec = round_end - round_start
+        elapsed_total_sec = round_end - alg_run_start
+        since_prev_round_sec = round_end - prev_round_end
+        prev_round_end = round_end
+
+        print(
+            f"[WALLCLOCK] alg={alg} round={t} "
+            f"elapsed_total_sec={elapsed_total_sec:.4f} "
+            f"round_time_sec={round_time_sec:.4f} "
+            f"grad_phase_sec={grad_phase_sec:.4f} "
+            f"eval_phase_sec={eval_phase_sec:.4f} "
+            f"train_loss={sum_loss_train:.6f} train_acc={sum_acc_train:.6f} "
+            f"test_loss={sum_loss_test:.6f} test_acc={sum_acc_test:.6f}",
+            flush=True
+        )

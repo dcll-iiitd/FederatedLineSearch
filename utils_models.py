@@ -165,6 +165,6 @@ def get_model(model,n_c):
   elif(model=='EMNIST_CNN'):
     return EMNIST_CNN()
   elif model == 'LOGISTIC_REGRESSION':
-      return LogisticRegressionPyTorch(input_dim=784, output_dim=10)
+      return LogisticRegressionPyTorch(input_dim=784, output_dim=n_c)
   elif model == 'LSTM':
         return LSTMModel()
