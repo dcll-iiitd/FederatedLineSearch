@@ -20,7 +20,7 @@ class Sls(torch.optim.Optimizer):
         reset_option (float, optional): sets the rest option strategy (default: 1)
         eta_max (float, optional): an upper bound used by Goldstein on the step size (default: 10)
         bound_step_size (bool, optional): a flag used by Goldstein for whether to bound the step-size (default: True)
-        line_search_fn (float, optional): the condition used by the line-search to find the 
+        line_search_fn (float, optional): the condition used by the line-search to find the
                     step-size (default: Armijo)
     """
 
@@ -35,7 +35,8 @@ class Sls(torch.optim.Optimizer):
                  reset_option=1,
                  eta_max=10,
                  bound_step_size=True,
-                 line_search_fn="armijo"):
+                 line_search_fn="armijo",
+                 max_grad_norm=None):
         defaults = dict(n_batches_per_epoch=n_batches_per_epoch,
                         init_step_size=init_step_size,
                         c=c,
@@ -46,7 +47,8 @@ class Sls(torch.optim.Optimizer):
                         eta_max=eta_max,
                         bound_step_size=bound_step_size,
                         line_search_fn=line_search_fn)
-        super().__init__(params, defaults)       
+        super().__init__(params, defaults)
+        self.max_grad_norm = max_grad_norm
 
         self.state['step'] = 0
         self.state['step_size'] = init_step_size
@@ -55,21 +57,36 @@ class Sls(torch.optim.Optimizer):
         self.state['n_backwards'] = 0
 
     def step(self, closure):
-        # deterministic closure
         seed = time.time()
+
         def closure_deterministic():
             with ut.random_seed_torch(int(seed)):
                 return closure()
 
         batch_step_size = self.state['step_size']
 
-        # get loss and compute gradients
         loss = closure_deterministic()
         loss.backward()
 
-        # increment # forward-backward calls
+        # Clip the gradient that SLS will actually use for its candidate
+        # updates and Armijo condition.
+        if self.max_grad_norm is not None:
+            all_params = [
+                parameter
+                for group in self.param_groups
+                for parameter in group["params"]
+            ]
+
+            torch.nn.utils.clip_grad_norm_(
+                all_params,
+                max_norm=self.max_grad_norm
+            )
+
         self.state['n_forwards'] += 1
         self.state['n_backwards'] += 1
+
+        line_search_forwards = 0
+        line_search_failed = False
 
         # loop over parameter groups
         for group in self.param_groups:
@@ -77,7 +94,10 @@ class Sls(torch.optim.Optimizer):
 
             # save the current parameters:
             params_current = copy.deepcopy(params)
-            grad_current = ut.get_grad_list(params)
+            grad_current = [
+                grad.detach().clone() if grad is not None else None
+                for grad in ut.get_grad_list(params)
+            ]
 
             grad_norm = ut.compute_grad_norm(grad_current)
 
@@ -101,7 +121,7 @@ class Sls(torch.optim.Optimizer):
                         # compute the loss at the next step; no need to compute gradients.
                         loss_next = closure_deterministic()
                         self.state['n_forwards'] += 1
-
+                        line_search_forwards += 1
                         # =================================================
                         # Line search
                         if group['line_search_fn'] == "armijo":
@@ -115,7 +135,7 @@ class Sls(torch.optim.Optimizer):
                             found, step_size, step_size_old = armijo_results
                             if found == 1:
                                 break
-                        
+
                         elif group['line_search_fn'] == "goldstein":
                             goldstein_results = ut.check_goldstein_conditions(step_size=step_size,
                                                                     loss=loss,
@@ -132,13 +152,15 @@ class Sls(torch.optim.Optimizer):
 
                             if found == 3:
                                 break
-                
+
                     # if line search exceeds max_epochs
                     if found == 0:
-                        ut.try_sgd_update(params, 1e-6, params_current, grad_current)
+                        line_search_failed = True
+                        step_size = 1e-6
+                        ut.try_sgd_update(params, step_size, params_current, grad_current)
 
             # save the new step-size
             self.state['step_size'] = step_size
             self.state['step'] += 1
 
-        return loss
+        return loss, line_search_forwards, line_search_failed

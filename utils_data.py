@@ -328,32 +328,50 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
         train_dir = 'femnist_data/train'
         test_dir = 'femnist_data/test'
 
-        train_files = sorted([os.path.join(train_dir, f) for f in os.listdir(train_dir) if f.endswith('.json')])
-        test_files = sorted([os.path.join(test_dir, f) for f in os.listdir(test_dir) if f.endswith('.json')])
+        train_files = sorted([
+            os.path.join(train_dir, f)
+            for f in os.listdir(train_dir)
+            if f.endswith('.json')
+        ])
+        test_files = sorted([
+            os.path.join(test_dir, f)
+            for f in os.listdir(test_dir)
+            if f.endswith('.json')
+        ])
 
-   
-        train_files = train_files[:n_client]
-        test_files = test_files[:n_client]
-  
         dataset_train = []
         dataset_test = []
-        user_ids =[]
+        user_ids = []
 
         for train_f, test_f in zip(train_files, test_files):
-          with open(train_f, 'r') as f:
-            train_json = json.load(f)
-          with open(test_f, 'r') as f:
-            test_json = json.load(f)
-          for client_id in train_json["user_data"]:
-              user_ids.append(client_id)
-              train_data = train_json["user_data"][client_id]
-              test_data = test_json["user_data"][client_id]
+            with open(train_f, 'r') as f:
+                train_json = json.load(f)
 
-              train_dataset = FEMNISTLeafDataset(train_data)
-              test_dataset = FEMNISTLeafDataset(test_data)
+            with open(test_f, 'r') as f:
+                test_json = json.load(f)
 
-              dataset_train.append(train_dataset)
-              dataset_test.append(test_dataset)
+            for client_id in train_json["user_data"]:
+                if len(dataset_train) >= n_client:
+                    break
+
+                if client_id not in test_json["user_data"]:
+                    continue
+
+                user_ids.append(client_id)
+                train_data = train_json["user_data"][client_id]
+                test_data = test_json["user_data"][client_id]
+
+                dataset_train.append(FEMNISTLeafDataset(train_data))
+                dataset_test.append(FEMNISTLeafDataset(test_data))
+
+            if len(dataset_train) >= n_client:
+                break
+
+        if len(dataset_train) < n_client:
+            raise ValueError(
+                f"Requested {n_client} FEMNIST clients, but only "
+                f"{len(dataset_train)} matching train/test clients were found"
+            )
 
         dataset_test_global = torch.utils.data.ConcatDataset(dataset_test)
     

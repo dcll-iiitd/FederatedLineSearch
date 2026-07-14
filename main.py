@@ -386,7 +386,7 @@ for alg in algs:
     mu = mu_algs[alg]
 
     
-    for t in range(0,args['rounds']+1):
+    for t in range(0,args['rounds']):
         
 
         print ("Algo ", alg, " Round No. " , t)
@@ -425,6 +425,14 @@ for alg in algs:
         
         p_sum = 0
 
+        # FedSLS line-search statistics for this communication round
+        round_local_steps = 0
+        round_search_forwards = 0
+        round_total_forwards = 0
+        round_total_backwards = 0
+        round_failed_searches = 0
+        client_final_step_sizes = []
+
         
         if(alg=='scaffold' or alg=='scaffold(exp)'):
             c_cpu = torch.zeros((d,), device='cpu')
@@ -440,18 +448,74 @@ for alg in algs:
 
         for i in ind:
 
-            
-            grad = get_grad(copy.deepcopy(net_glob),args, args_hyperparameters, dataset_train[i], alg, i, c, mem_mat)
-            
-            if isinstance(grad, tuple):
-                  grad = grad[0]
-           
-            grad_norm_sum += p[i]*torch.linalg.norm(grad)**2
+            result = get_grad(
+                copy.deepcopy(net_glob),
+                args,
+                args_hyperparameters,
+                dataset_train[i],
+                alg,
+                i,
+                c,
+                mem_mat
+            )
 
-            grad_avg = grad_avg + p[i]*grad
-            
+            if alg in ('fedsls', 'fedexpsls'):
+                grad, search_stats = result
+
+                round_local_steps += search_stats["local_steps"]
+                round_search_forwards += search_stats["line_search_forwards"]
+                round_total_forwards += search_stats["total_forwards"]
+                round_total_backwards += search_stats["total_backwards"]
+                round_failed_searches += search_stats["failed_searches"]
+
+                client_final_step_sizes.append(
+                    float(search_stats["final_step_size"])
+                )
+            else:
+                grad = result
+
+            grad_norm_sum += p[i] * torch.linalg.norm(grad)**2
+            grad_avg = grad_avg + p[i] * grad
             p_sum += p[i]
 
+        if alg in ('fedsls', 'fedexpsls'):
+            avg_trials_per_step = (
+                round_search_forwards / round_local_steps
+                if round_local_steps > 0
+                else 0.0
+            )
+
+            avg_final_step_size = (
+                sum(client_final_step_sizes) / len(client_final_step_sizes)
+                if client_final_step_sizes
+                else 0.0
+            )
+
+            max_final_step_size = (
+                max(client_final_step_sizes)
+                if client_final_step_sizes
+                else 0.0
+            )
+
+            min_final_step_size = (
+                min(client_final_step_sizes)
+                if client_final_step_sizes
+                else 0.0
+            )
+
+            print(
+                f"[SLS] round={t} "
+                f"local_steps={round_local_steps} "
+                f"search_forwards={round_search_forwards} "
+                f"total_forwards={round_total_forwards} "
+                f"total_backwards={round_total_backwards} "
+                f"failed_searches={round_failed_searches} "
+                f"avg_trials_per_step={avg_trials_per_step:.4f} "
+                f"avg_final_step_size={avg_final_step_size:.8g} "
+                f"min_final_step_size={min_final_step_size:.8g} "
+                f"max_final_step_size={max_final_step_size:.8g}",
+                flush=True
+            )
         # added 18 feb
         if torch.cuda.is_available(): 
           torch.cuda.synchronize()

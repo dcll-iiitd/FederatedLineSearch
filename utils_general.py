@@ -33,7 +33,7 @@ class LocalUpdate_Radam(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
@@ -54,10 +54,10 @@ class LocalUpdate_Radam(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -72,7 +72,7 @@ class LocalUpdate_Radam(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 class LocalUpdate_Adagrad(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
@@ -86,7 +86,7 @@ class LocalUpdate_Adagrad(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
@@ -107,10 +107,10 @@ class LocalUpdate_Adagrad(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -125,7 +125,7 @@ class LocalUpdate_Adagrad(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 class LocalUpdate_Adadelta(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
@@ -139,7 +139,7 @@ class LocalUpdate_Adadelta(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
@@ -160,10 +160,10 @@ class LocalUpdate_Adadelta(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -178,9 +178,9 @@ class LocalUpdate_Adadelta(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
-      
+
 
 class LocalUpdate_Amsgrad(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
@@ -194,7 +194,7 @@ class LocalUpdate_Amsgrad(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
         # optimizer = torch.optim.Adam(net.parameters(), lr=0.01, betas=(0.9, 0.99), eps=1e-1, amsgrad=True)
@@ -214,10 +214,10 @@ class LocalUpdate_Amsgrad(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -232,9 +232,9 @@ class LocalUpdate_Amsgrad(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
-      
+
 class LocalUpdate_Adamax(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -247,13 +247,13 @@ class LocalUpdate_Adamax(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
-        
+
         # optimizer = torch.optim.SGD(net.parameters(), lr=0.1, momentum = 0.9, weight_decay=self.weight_decay)
-       
+
         optimizer = torch.optim.Adamax(net.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-02, weight_decay=0, foreach=None,  maximize=False, differentiable=False, capturable=False)
 
         prev_net = copy.deepcopy(net)
@@ -270,10 +270,10 @@ class LocalUpdate_Adamax(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -288,10 +288,10 @@ class LocalUpdate_Adamax(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 
-      
+
 class LocalUpdate_RmsProp(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -304,7 +304,7 @@ class LocalUpdate_RmsProp(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
@@ -325,10 +325,10 @@ class LocalUpdate_RmsProp(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -343,12 +343,12 @@ class LocalUpdate_RmsProp(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
-      
 
 
-      
+
+
 class LocalUpdate_Adam(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -361,11 +361,11 @@ class LocalUpdate_Adam(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01, betas=(0.9, 0.999), eps=1e-1, weight_decay=0, amsgrad=False, foreach=None, maximize=False, capturable=False, differentiable=False, fused=None)
-        
+
 
 
         prev_net = copy.deepcopy(net)
@@ -382,10 +382,10 @@ class LocalUpdate_Adam(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -400,7 +400,7 @@ class LocalUpdate_Adam(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 class LocalUpdate_Nadam(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
@@ -414,7 +414,7 @@ class LocalUpdate_Nadam(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
@@ -435,10 +435,10 @@ class LocalUpdate_Nadam(object):
               log_probs = net(images)
               loss = self.loss_func(log_probs, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -453,7 +453,7 @@ class LocalUpdate_Nadam(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 class LocalUpdate(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
@@ -467,7 +467,7 @@ class LocalUpdate(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
@@ -487,14 +487,14 @@ class LocalUpdate(object):
               output = net(images)
               # labels = torch.tensor(labels, dtype=torch.long)
               # log_probs = output[-1]
-              
-              
+
+
               loss = self.loss_func(output, labels)
               loss.backward()
-                
+
               if(self.use_gradient_clipping ==True):
                 torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
+
               optimizer.step()
               batch_loss.append(loss.item())
               step_count=step_count+1
@@ -509,7 +509,7 @@ class LocalUpdate(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 class LocalUpdate_Sls(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
@@ -523,56 +523,61 @@ class LocalUpdate_Sls(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
-        
-        optimizer = Sls(net.parameters())
-
+        # Historical FedSLS was effectively unclipped because its closure cleared
+        # the gradients that had been clipped before optimizer.step().
+        optimizer = Sls(net.parameters(), max_grad_norm=None)
         prev_net = copy.deepcopy(net)
 
-        batch_loss = []
         step_count = 0
-        total_count =0
-        while(True):
-          for batch_idx, (images, labels) in enumerate(self.ldr_train):
-              images, labels = images.to(self.args['device']), labels.to(self.args['device'])
-              if(self.use_data_augmentation == True):
-                images = self.transform_train(images)
-              net.zero_grad()
-              output = net(images)
-              # labels = torch.tensor(labels, dtype=torch.long)
-              # log_probs = output[-1]
-              def closure():
+        total_line_search_forwards = 0
+        total_forward_evaluations = 0
+        failed_searches = 0
+
+        while step_count < self.args['cp']:
+            for images, labels in self.ldr_train:
+                images = images.to(self.args['device'])
+                labels = labels.to(self.args['device'])
+
+                if self.use_data_augmentation:
+                    images = self.transform_train(images)
+
+                def closure():
                     optimizer.zero_grad()
                     output = net(images)
-                    loss = self.loss_func(output, labels)
-                    # loss.backward()
-                    return loss
-              
-              loss = self.loss_func(output, labels)
-              loss.backward()
-                
-              if(self.use_gradient_clipping ==True):
-                torch.nn.utils.clip_grad_norm_(parameters=net.parameters(), max_norm=self.max_norm)
-            
-              count = optimizer.step(closure)
-              total_count+=count
-              batch_loss.append(loss.item())
-              step_count=step_count+1
-              if(step_count >= self.args['cp']):
-                break
-          if(step_count >= self.args['cp']):
-            break
+                    return self.loss_func(output, labels)
+
+                loss, line_search_forwards, search_failed = optimizer.step(closure)
+
+                total_line_search_forwards += line_search_forwards
+                total_forward_evaluations += 1 + line_search_forwards
+                failed_searches += int(search_failed)
+
+                step_count += 1
+
+                if step_count >= self.args['cp']:
+                    break
 
         with torch.no_grad():
-                vec_curr = parameters_to_vector(net.parameters())
-                vec_prev = parameters_to_vector(prev_net.parameters())
-                params_delta_vec = vec_curr-vec_prev
-                model_to_return = params_delta_vec
-            
-        return model_to_return,total_count
+            vec_curr = parameters_to_vector(net.parameters())
+            vec_prev = parameters_to_vector(prev_net.parameters())
+            model_to_return = vec_curr - vec_prev
+
+        search_stats = {
+            "local_steps": step_count,
+            "line_search_forwards": total_line_search_forwards,
+            "total_forwards": total_forward_evaluations,
+            "total_backwards": step_count,
+            "failed_searches": failed_searches,
+            "final_step_size": float(optimizer.state["step_size"]),
+        }
+
+        return model_to_return, search_stats
+
+
 class LocalUpdate_scaffold(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -585,9 +590,9 @@ class LocalUpdate_scaffold(object):
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
 
-        
+
+
     def train_and_sketch(self, net, idx, mem_mat, c):
         net.train()
 
@@ -595,8 +600,7 @@ class LocalUpdate_scaffold(object):
 
 
         prev_net = copy.deepcopy(net)
-        client_control = mem_mat[idx].to(self.args['device'])
-        
+
         eta = self.lr
 
         batch_loss = []
@@ -612,9 +616,15 @@ class LocalUpdate_scaffold(object):
                 loss = self.loss_func(log_probs, labels)
 
 
-                state_params_diff = c-client_control
-                local_par_list = parameters_to_vector(net.parameters())
-                
+                state_params_diff = c-mem_mat[idx]
+                local_par_list = None
+                for param in net.parameters():
+                    if not isinstance(local_par_list, torch.Tensor):
+                    # Initially nothing to concatenate
+                        local_par_list = param.reshape(-1)
+                    else:
+                        local_par_list = torch.cat((local_par_list, param.reshape(-1)), 0)
+
                 loss_algo = torch.sum(local_par_list * state_params_diff)
                 loss = loss + loss_algo
 
@@ -629,8 +639,8 @@ class LocalUpdate_scaffold(object):
                 batch_loss.append(loss.item())
                 step_count=step_count+1
 
-            
-            
+
+
                 if(step_count >= self.args['cp']):
                     break
 
@@ -643,13 +653,12 @@ class LocalUpdate_scaffold(object):
                 vec_curr = parameters_to_vector(net.parameters())
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
-                
-                new_client_control = (client_control-c) - params_delta_vec/(step_count*eta)
-                mem_mat[idx].copy_(new_client_control.detach().cpu())
+
+                mem_mat[idx] = (mem_mat[idx]-c) - params_delta_vec/(step_count*eta)
 
 
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 
 class LocalUpdate_fedprox(object):
@@ -666,7 +675,7 @@ class LocalUpdate_fedprox(object):
         self.weight_decay = args_hyperparameters['weight_decay']
         self.mu = args_hyperparameters['mu']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
-        
+
     def train_and_sketch(self, net):
         net.train()
 
@@ -675,7 +684,7 @@ class LocalUpdate_fedprox(object):
 
         prev_net = copy.deepcopy(net)
         prev_net_vec = parameters_to_vector(prev_net.parameters())
-        
+
         eta = self.lr
         mu = self.mu
 
@@ -705,14 +714,14 @@ class LocalUpdate_fedprox(object):
                 optimizer.step()
                 batch_loss.append(loss.item())
                 step_count=step_count+1
-                
-               
-            
-            
+
+
+
+
                 if(step_count >= self.args['cp']):
                     break
-                    
-                    
+
+
             if(step_count >= self.args['cp']):
                 break
 
@@ -722,9 +731,9 @@ class LocalUpdate_fedprox(object):
                 vec_curr = parameters_to_vector(net.parameters())
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
-                
+
                 model_to_return = params_delta_vec
-            
+
         return model_to_return
 
 
@@ -733,10 +742,10 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_m
     if(alg == 'fedexpsls' or alg == 'fedsls'):
         local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
 
-        grad,count = local.train_and_sketch(copy.deepcopy(net_glob))
+        grad,search_stats = local.train_and_sketch(copy.deepcopy(net_glob))
 
-        return grad,count
-    if(alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)'):
+        return grad,search_stats
+    if(alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)' or alg=='fedadam'):
 
         local = LocalUpdate(args, args_hyperparameters, dataset=dataset)
 
@@ -748,28 +757,27 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_m
 
          local = LocalUpdate_scaffold(args, args_hyperparameters, dataset=dataset)
 
-         grad = local.train_and_sketch(copy.deepcopy(net_glob),idx,mem_mat,c)
+        #  grad = local.train_and_sketch(copy.deepcopy(net_glob),idx,mem_mat,c)
 
          return grad
-    
-    elif(alg=='fedprox' or alg=='fedprox(exp)'):            
-        
+
+    elif(alg=='fedprox' or alg=='fedprox(exp)'):
+
 
          local = LocalUpdate_fedprox(args, args_hyperparameters, dataset=dataset)
 
          grad = local.train_and_sketch(copy.deepcopy(net_glob))
 
          return grad
-   
-       
-  
-    
-      
-    
-        
-      
-        
-    
 
 
-    
+
+
+
+
+
+
+
+
+
+
