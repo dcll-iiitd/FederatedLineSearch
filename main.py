@@ -397,7 +397,10 @@ for alg in algs:
         round_start = time.time() #added 18 feb
 
 
-        local_lr = decay*local_lr
+        # Keep SCAFFOLD local LR constant, matching the constant LR used by FedAvg.
+        # All non-SCAFFOLD algorithms retain their existing decay behavior.
+        if alg not in ('scaffold', 'scaffold(exp)'):
+          local_lr = decay * local_lr
         epsilon = decay*decay*epsilon
 
         args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'use_augmentation':True}

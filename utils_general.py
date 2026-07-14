@@ -600,6 +600,7 @@ class LocalUpdate_scaffold(object):
 
 
         prev_net = copy.deepcopy(net)
+        client_control = mem_mat[idx].to(self.args["device"])
 
         eta = self.lr
 
@@ -616,14 +617,8 @@ class LocalUpdate_scaffold(object):
                 loss = self.loss_func(log_probs, labels)
 
 
-                state_params_diff = c-mem_mat[idx]
-                local_par_list = None
-                for param in net.parameters():
-                    if not isinstance(local_par_list, torch.Tensor):
-                    # Initially nothing to concatenate
-                        local_par_list = param.reshape(-1)
-                    else:
-                        local_par_list = torch.cat((local_par_list, param.reshape(-1)), 0)
+                state_params_diff = c - client_control
+                local_par_list = parameters_to_vector(net.parameters())
 
                 loss_algo = torch.sum(local_par_list * state_params_diff)
                 loss = loss + loss_algo
@@ -654,7 +649,8 @@ class LocalUpdate_scaffold(object):
                 vec_prev = parameters_to_vector(prev_net.parameters())
                 params_delta_vec = vec_curr-vec_prev
 
-                mem_mat[idx] = (mem_mat[idx]-c) - params_delta_vec/(step_count*eta)
+                new_client_control = (client_control - c) - params_delta_vec / (step_count * eta)
+                mem_mat[idx].copy_(new_client_control.detach().cpu())
 
 
                 model_to_return = params_delta_vec
@@ -753,13 +749,10 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_m
 
         return grad
 
-    elif(alg=='scaffold' or alg=='scaffold(exp)'):
-
-         local = LocalUpdate_scaffold(args, args_hyperparameters, dataset=dataset)
-
-        #  grad = local.train_and_sketch(copy.deepcopy(net_glob),idx,mem_mat,c)
-
-         return grad
+    elif alg == 'scaffold' or alg == 'scaffold(exp)':
+        local = LocalUpdate_scaffold(args, args_hyperparameters, dataset=dataset)
+        grad = local.train_and_sketch(copy.deepcopy(net_glob), idx, mem_mat, c)
+        return grad
 
     elif(alg=='fedprox' or alg=='fedprox(exp)'):
 
