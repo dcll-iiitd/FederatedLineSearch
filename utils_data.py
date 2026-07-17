@@ -124,9 +124,6 @@ def getDirichletData_equal(y, n, alpha, num_c):
         for i in range(n):
           p_client[i] = np.random.dirichlet(np.repeat(alpha,K))
             
-        p_client_cdf = np.cumsum(p_client, axis=1)
-      
-        
         idx_batch = [[] for _ in range(n)]
         
         m = int(N/n)
@@ -135,30 +132,37 @@ def getDirichletData_equal(y, n, alpha, num_c):
         idx_labels = [np.where(labelList_true==k)[0] for k in range(K)]
 
         
-        idx_counter = [0 for k in range(K)]
+        idx_counter = np.zeros(K, dtype=np.int64)
+        label_sizes = np.array([len(indices) for indices in idx_labels], dtype=np.int64)
+        client_sizes = np.zeros(n, dtype=np.int64)
         total_cnt = 0
         
         
-        while(total_cnt<m*n):
-                
-            curr_clnt = np.random.randint(n)
-            
-            if (len(idx_batch[curr_clnt])>=m):
-                continue
+        while total_cnt < m * n:
+            # Sampling from all clients/classes and rejecting full ones can become
+            # effectively infinite near the end of allocation. Choose directly
+            # from clients with capacity and mask classes that are exhausted.
+            active_clients = np.flatnonzero(client_sizes < m)
+            curr_clnt = np.random.choice(active_clients)
 
-            
+            available_classes = idx_counter < label_sizes
+            class_probs = p_client[curr_clnt] * available_classes
+            prob_sum = class_probs.sum()
+
+            if prob_sum == 0:
+                # Dirichlet probabilities should be positive, but this fallback
+                # also makes the allocator safe against numerical underflow.
+                class_probs = available_classes.astype(np.float64)
+                prob_sum = class_probs.sum()
+
+            if prob_sum == 0:
+                raise RuntimeError("No samples remain before client allocation is complete")
+
+            cls_label = np.random.choice(K, p=class_probs / prob_sum)
+            idx_batch[curr_clnt].append(idx_labels[cls_label][idx_counter[cls_label]])
+            idx_counter[cls_label] += 1
+            client_sizes[curr_clnt] += 1
             total_cnt += 1
-            curr_prior = p_client_cdf[curr_clnt]
-                
-            while True:
-                cls_label = np.argmax(np.random.uniform() <= curr_prior)
-                if (idx_counter[cls_label] >= len(idx_labels[cls_label])):
-                    continue
-
-                idx_batch[curr_clnt].append(idx_labels[cls_label][idx_counter[cls_label]])
-                idx_counter[cls_label] += 1
-
-                break
 
         for j in range(n_nets):
             np.random.shuffle(idx_batch[j])

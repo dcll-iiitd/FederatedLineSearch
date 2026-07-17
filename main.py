@@ -98,6 +98,7 @@ decay=  0.998
 max_norm = 10
 use_gradient_clipping = True
 weight_decay = 0.0001
+feddyn_alpha = 0.01  # FedDyn regularization coefficient
 
 if(dataset == 'Shakespeare'):
   eta_l_fedavg = 0.01
@@ -309,13 +310,13 @@ if (dataset=='CIFAR100'):
 
 
 
-eta_l_algs = {'fedavgm(exp)': eta_l_fedavgm_exp, 'fedavgm': eta_l_fedavgm,'fedadam':eta_l_fedadam, 'fedprox':eta_l_fedprox, 'fedprox(exp)': eta_l_fedexp, 'fedavg': eta_l_fedavg, 'fedadagrad': eta_l_fedadagrad, 'fedexp': eta_l_fedexp, 'scaffold': eta_l_scaffold, 'scaffold(exp)': eta_l_scaffold_exp , 'fedexpsls':eta_l_fedexp,'fedsls':eta_l_fedavg}
+eta_l_algs = {'fedavgm(exp)': eta_l_fedavgm_exp, 'fedavgm': eta_l_fedavgm,'fedadam':eta_l_fedadam, 'fedprox':eta_l_fedprox, 'fedprox(exp)': eta_l_fedexp, 'fedavg': eta_l_fedavg, 'fedadagrad': eta_l_fedadagrad, 'fedexp': eta_l_fedexp, 'scaffold': eta_l_scaffold, 'scaffold(exp)': eta_l_scaffold_exp , 'fedexpsls':eta_l_fedexp,'fedsls':eta_l_fedavg, 'feddyn': eta_l_fedavg}
 
-eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive','fedexpsls': 'adaptive', 'fedsls':eta_g_fedavg}
+eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive','fedexpsls': 'adaptive', 'fedsls':eta_g_fedavg, 'feddyn': 1}
 
-epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 'fedprox':0, 'fedprox(exp)':0, 'fedavg': 0, 'fedadagrad':0, 'fedexp':epsilon_fedexp, 'scaffold': 0, 'scaffold(exp)': epsilon_scaffold_exp,'fedexpsls':epsilon_fedexp, 'fedsls': 0}
+epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 'fedprox':0, 'fedprox(exp)':0, 'fedavg': 0, 'fedadagrad':0, 'fedexp':epsilon_fedexp, 'scaffold': 0, 'scaffold(exp)': epsilon_scaffold_exp,'fedexpsls':epsilon_fedexp, 'fedsls': 0, 'feddyn': 0}
 
-mu_algs = {'fedavgm(exp)': 0, 'fedavgm': 0, 'fedadam':0, 'fedprox': mu_fedprox, 'fedprox(exp)': mu_fedprox, 'fedavg':0, 'fedadagrad':0, 'fedexp':0, 'scaffold':0, 'scaffold(exp)':0,'fedexpsls':0,'fedsls':0}
+mu_algs = {'fedavgm(exp)': 0, 'fedavgm': 0, 'fedadam':0, 'fedprox': mu_fedprox, 'fedprox(exp)': mu_fedprox, 'fedavg':0, 'fedadagrad':0, 'fedexp':0, 'scaffold':0, 'scaffold(exp)':0,'fedexpsls':0,'fedsls':0, 'feddyn': 0}
 
 
 
@@ -369,8 +370,12 @@ for alg in algs:
     grad_mom = torch.zeros(d).to(args['device'])
     if(alg=='scaffold' or alg=='scaffold(exp)'):
         mem_mat = torch.zeros((n, d), device='cpu')  ### needed for scaffold
+    elif alg == 'feddyn':
+        mem_mat = torch.zeros((n, d), device='cpu')
     else:
         mem_mat = None
+
+    feddyn_h = torch.zeros(d, device=args['device']) if alg == 'feddyn' else None
     
     w_vec_estimate = torch.zeros(d).to(args['device'])
     
@@ -403,7 +408,7 @@ for alg in algs:
           local_lr = decay * local_lr
         epsilon = decay*decay*epsilon
 
-        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'use_augmentation':True}
+        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'feddyn_alpha': feddyn_alpha, 'use_augmentation':True}
         
         
         if(dataset=='CIFAR10' or dataset=='CIFAR100' or dataset=='CINIC10'):
@@ -427,6 +432,7 @@ for alg in algs:
         grad_norm_sum = 0
         
         p_sum = 0
+        feddyn_delta_sum = torch.zeros(d, device=args['device']) if alg == 'feddyn' else None
 
         # FedSLS line-search statistics for this communication round
         round_local_steps = 0
@@ -480,6 +486,8 @@ for alg in algs:
             grad_norm_sum += p[i] * torch.linalg.norm(grad)**2
             grad_avg = grad_avg + p[i] * grad
             p_sum += p[i]
+            if alg == 'feddyn':
+                feddyn_delta_sum += grad
 
         if alg in ('fedsls', 'fedexpsls'):
             avg_trials_per_step = (
@@ -536,6 +544,11 @@ for alg in algs:
             grad_avg = grad_avg/p_sum
             
             grad_norm_avg = grad_norm_sum/p_sum
+
+            if alg == 'feddyn':
+              feddyn_avg_delta = feddyn_delta_sum / S
+              feddyn_h = feddyn_h - feddyn_alpha * feddyn_avg_delta
+              grad_avg = feddyn_avg_delta - feddyn_h / feddyn_alpha
 
             eta_g = args_hyperparameters['eta_g']
 

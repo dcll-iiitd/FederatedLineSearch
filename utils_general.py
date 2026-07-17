@@ -511,6 +511,65 @@ class LocalUpdate(object):
                 model_to_return = params_delta_vec
 
         return model_to_return
+
+
+class LocalUpdate_FedDyn(object):
+    def __init__(self, args, args_hyperparameters, dataset=None):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.ldr_train = DataLoader(dataset, batch_size=self.args["bs"], shuffle=True)
+        self.lr = args_hyperparameters["eta_l"]
+        self.alpha = args_hyperparameters["feddyn_alpha"]
+        self.use_data_augmentation = args_hyperparameters["use_augmentation"]
+        self.use_gradient_clipping = args_hyperparameters["use_gradient_clipping"]
+        self.max_norm = args_hyperparameters["max_norm"]
+        self.weight_decay = args_hyperparameters["weight_decay"]
+        self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip()])
+
+    def train_and_sketch(self, net, idx, client_gradients):
+        net.train()
+        optimizer = torch.optim.SGD(
+            net.parameters(), lr=self.lr, momentum=0, weight_decay=self.weight_decay
+        )
+
+        global_vec = parameters_to_vector(net.parameters()).detach().clone()
+        client_gradient = client_gradients[idx].to(self.args["device"])
+        step_count = 0
+
+        while step_count < self.args["cp"]:
+            for images, labels in self.ldr_train:
+                images = images.to(self.args["device"])
+                labels = labels.to(self.args["device"])
+
+                if self.use_data_augmentation:
+                    images = self.transform_train(images)
+
+                optimizer.zero_grad()
+                output = net(images)
+                model_vec = parameters_to_vector(net.parameters())
+                empirical_loss = self.loss_func(output, labels)
+                linear_term = torch.dot(client_gradient, model_vec)
+                proximal_term = 0.5 * self.alpha * torch.sum((model_vec - global_vec) ** 2)
+                loss = empirical_loss - linear_term + proximal_term
+                loss.backward()
+
+                if self.use_gradient_clipping:
+                    torch.nn.utils.clip_grad_norm_(net.parameters(), self.max_norm)
+
+                optimizer.step()
+                step_count += 1
+                if step_count >= self.args["cp"]:
+                    break
+
+        with torch.no_grad():
+            local_vec = parameters_to_vector(net.parameters())
+            params_delta = local_vec - global_vec
+            new_client_gradient = client_gradient - self.alpha * params_delta
+            client_gradients[idx].copy_(new_client_gradient.cpu())
+
+        return params_delta
+
+
 class LocalUpdate_Sls(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -735,6 +794,10 @@ class LocalUpdate_fedprox(object):
 
 
 def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_mat=None):
+    if alg == 'feddyn':
+        local = LocalUpdate_FedDyn(args, args_hyperparameters, dataset=dataset)
+        return local.train_and_sketch(copy.deepcopy(net_glob), idx, mem_mat)
+
     if(alg == 'fedexpsls' or alg == 'fedsls'):
         local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
 
