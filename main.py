@@ -10,6 +10,9 @@ from utils_models import *
 from utils_general import *
 import time 
 import yaml
+import csv
+import json
+import os
 from datetime import datetime #added 18 feb
 
 parser = argparse.ArgumentParser()
@@ -22,8 +25,22 @@ parser.add_argument('--num_clients', type=int, required=True)
 parser.add_argument('--num_participating_clients', type=int, required=True)
 parser.add_argument('--num_rounds', type=int, required=True)
 parser.add_argument('--alpha', type=float, required=True)
+parser.add_argument('--reset-option', type=int, choices=(0, 1, 2), default=1)
+parser.add_argument('--eta-lmax', type=float, default=1.0)
+parser.add_argument('--measure-kappa', action='store_true', default=False)
+parser.add_argument('--kappa-measure-every', type=int, default=10)
+parser.add_argument('--deterministic-sls-seed', action='store_true', default=False)
 
 args_required = parser.parse_args()
+
+if args_required.kappa_measure_every <= 0:
+    parser.error("--kappa-measure-every must be greater than zero")
+if args_required.measure_kappa and args_required.algorithm not in ("fedsls", "fedexpsls"):
+    parser.error("--measure-kappa is supported only for fedsls and fedexpsls")
+if args_required.measure_kappa and args_required.reset_option != 2:
+    parser.error("--measure-kappa requires --reset-option 2")
+if args_required.deterministic_sls_seed and args_required.algorithm not in ("fedsls", "fedexpsls"):
+    parser.error("--deterministic-sls-seed is supported only for fedsls and fedexpsls")
 
 
 
@@ -35,6 +52,11 @@ num_clients = args_required.num_clients
 num_participating_clients = args_required.num_participating_clients
 num_rounds = args_required.num_rounds
 alpha = args_required.alpha
+reset_option = args_required.reset_option
+eta_lmax = args_required.eta_lmax
+measure_kappa = args_required.measure_kappa
+kappa_measure_every = args_required.kappa_measure_every
+deterministic_sls_seed = args_required.deterministic_sls_seed
 
 print_every_test = 5
 print_every_train = 5
@@ -66,6 +88,31 @@ torch.backends.cudnn.deterministic = True
 
 
 dataset_train,   dataset_test_global = get_dataset(dataset, num_clients, n_c, alpha, True)
+
+kappa_reference_sets = None
+kappa_csv_path = None
+if measure_kappa:
+  kappa_reference_sets = build_kappa_reference_sets(dataset_train, seed)
+  eta_token = format(eta_lmax, ".12g").replace(".", "p").replace("-", "m")
+  os.makedirs("results", exist_ok=True)
+  kappa_csv_path = os.path.join(
+      "results", f"kappa_measurements_seed{seed}_eta{eta_token}.csv"
+  )
+  kappa_metadata_path = os.path.splitext(kappa_csv_path)[0] + ".json"
+  with open(kappa_csv_path, "w", newline="") as csv_file:
+    writer = csv.writer(csv_file)
+    writer.writerow([
+        "round", "client_id", "local_step", "eta_returned",
+        "loss_prev_batch", "loss_curr_batch", "f_ref_prev",
+        "f_ref_curr", "grad_sq_norm", "line_search_failed", "seed"
+    ])
+  with open(kappa_metadata_path, "w") as metadata_file:
+    json.dump({
+        "seed": seed, "algorithm": algorithm, "reset_option": reset_option,
+        "eta_lmax": eta_lmax, "armijo_c": 0.1,
+        "kappa_measure_every": kappa_measure_every,
+        "deterministic_sls_seed": deterministic_sls_seed
+    }, metadata_file, indent=2)
 
 
 
@@ -392,6 +439,8 @@ for alg in algs:
 
     
     for t in range(0,args['rounds']):
+        measure_this_round = measure_kappa and (t % kappa_measure_every == 0)
+        round_kappa_rows = [] if measure_this_round else None
         
 
         print ("Algo ", alg, " Round No. " , t)
@@ -408,7 +457,7 @@ for alg in algs:
           local_lr = decay * local_lr
         epsilon = decay*decay*epsilon
 
-        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'feddyn_alpha': feddyn_alpha, 'use_augmentation':True}
+        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'feddyn_alpha': feddyn_alpha, 'reset_option': reset_option, 'eta_lmax': eta_lmax, 'use_augmentation':True}
         
         
         if(dataset=='CIFAR10' or dataset=='CIFAR100' or dataset=='CINIC10'):
@@ -457,19 +506,59 @@ for alg in algs:
 
         for i in ind:
 
-            result = get_grad(
-                copy.deepcopy(net_glob),
-                args,
-                args_hyperparameters,
-                dataset_train[i],
-                alg,
-                i,
-                c,
-                mem_mat
-            )
+            sls_seed_context = None
+            if deterministic_sls_seed:
+                sls_seed_context = {
+                    "round": t, "client_id": int(i), "seed": seed
+                }
+
+            kappa_context = None
+            if measure_this_round:
+                kappa_context = {
+                    "round": t,
+                    "client_id": int(i),
+                    "seed": seed,
+                    "reference_dataset": kappa_reference_sets[int(i)]
+                }
+
+            if measure_this_round:
+                result = get_grad_kappa(
+                    copy.deepcopy(net_glob),
+                    args,
+                    args_hyperparameters,
+                    dataset_train[i],
+                    alg,
+                    i,
+                    kappa_context,
+                    deterministic_seed=deterministic_sls_seed
+                )
+            elif deterministic_sls_seed:
+                result = get_grad_deterministic_sls(
+                    copy.deepcopy(net_glob),
+                    args,
+                    args_hyperparameters,
+                    dataset_train[i],
+                    alg,
+                    sls_seed_context
+                )
+            else:
+                result = get_grad(
+                    copy.deepcopy(net_glob),
+                    args,
+                    args_hyperparameters,
+                    dataset_train[i],
+                    alg,
+                    i,
+                    c,
+                    mem_mat
+                )
 
             if alg in ('fedsls', 'fedexpsls'):
-                grad, search_stats = result
+                if measure_this_round:
+                    grad, search_stats, client_kappa_rows = result
+                    round_kappa_rows.extend(client_kappa_rows)
+                else:
+                    grad, search_stats = result
 
                 round_local_steps += search_stats["local_steps"]
                 round_search_forwards += search_stats["line_search_forwards"]
@@ -488,6 +577,11 @@ for alg in algs:
             p_sum += p[i]
             if alg == 'feddyn':
                 feddyn_delta_sum += grad
+
+        if measure_this_round:
+            with open(kappa_csv_path, "a", newline="") as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerows(round_kappa_rows)
 
         if alg in ('fedsls', 'fedexpsls'):
             avg_trials_per_step = (

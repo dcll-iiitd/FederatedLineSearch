@@ -27,7 +27,7 @@ class Sls(torch.optim.Optimizer):
     def __init__(self,
                  params,
                  n_batches_per_epoch=500,
-                 init_step_size=1,
+                 init_step_size=1,  # eta_lmax in the analysis when reset_option=2
                  c=0.1,
                  beta_b=0.9,
                  gamma=2.0,
@@ -164,3 +164,217 @@ class Sls(torch.optim.Optimizer):
             self.state['step'] += 1
 
         return loss, line_search_forwards, line_search_failed
+
+    def step_with_seed(self, closure, closure_seed):
+        def closure_deterministic():
+            with ut.random_seed_torch(int(closure_seed)):
+                return closure()
+
+        batch_step_size = self.state["step_size"]
+        loss = closure_deterministic()
+        loss.backward()
+
+        if self.max_grad_norm is not None:
+            all_params = [
+                parameter
+                for group in self.param_groups
+                for parameter in group["params"]
+            ]
+            torch.nn.utils.clip_grad_norm_(
+                all_params, max_norm=self.max_grad_norm
+            )
+
+        self.state["n_forwards"] += 1
+        self.state["n_backwards"] += 1
+        line_search_forwards = 0
+        line_search_failed = False
+
+        for group in self.param_groups:
+            params = group["params"]
+            params_current = copy.deepcopy(params)
+            grad_current = [
+                grad.detach().clone() if grad is not None else None
+                for grad in ut.get_grad_list(params)
+            ]
+            grad_norm = ut.compute_grad_norm(grad_current)
+            step_size = ut.reset_step(
+                step_size=batch_step_size,
+                n_batches_per_epoch=group["n_batches_per_epoch"],
+                gamma=group["gamma"],
+                reset_option=group["reset_option"],
+                init_step_size=group["init_step_size"]
+            )
+
+            with torch.no_grad():
+                if grad_norm >= 1e-8:
+                    found = 0
+                    step_size_old = step_size
+                    for e in range(100):
+                        ut.try_sgd_update(
+                            params, step_size, params_current, grad_current
+                        )
+                        loss_next = closure_deterministic()
+                        self.state["n_forwards"] += 1
+                        line_search_forwards += 1
+                        if group["line_search_fn"] == "armijo":
+                            armijo_results = ut.check_armijo_conditions(
+                                step_size=step_size,
+                                step_size_old=step_size_old,
+                                loss=loss,
+                                grad_norm=grad_norm,
+                                loss_next=loss_next,
+                                c=group["c"],
+                                beta_b=group["beta_b"]
+                            )
+                            found, step_size, step_size_old = armijo_results
+                            if found == 1:
+                                break
+                        elif group["line_search_fn"] == "goldstein":
+                            goldstein_results = ut.check_goldstein_conditions(
+                                step_size=step_size,
+                                loss=loss,
+                                grad_norm=grad_norm,
+                                loss_next=loss_next,
+                                c=group["c"],
+                                beta_b=group["beta_b"],
+                                beta_f=group["beta_f"],
+                                bound_step_size=group["bound_step_size"],
+                                eta_max=group["eta_max"]
+                            )
+                            found = goldstein_results["found"]
+                            step_size = goldstein_results["step_size"]
+                            if found == 3:
+                                break
+
+                    if found == 0:
+                        line_search_failed = True
+                        step_size = 1e-6
+                        ut.try_sgd_update(
+                            params, step_size, params_current, grad_current
+                        )
+
+            self.state["step_size"] = step_size
+            self.state["step"] += 1
+
+        return loss, line_search_forwards, line_search_failed
+
+    def step_with_kappa(self, closure, reference_loss_fn, closure_seed=None):
+        seed = time.time() if closure_seed is None else closure_seed
+
+        def closure_deterministic():
+            with ut.random_seed_torch(int(seed)):
+                return closure()
+
+        batch_step_size = self.state["step_size"]
+
+        loss = closure_deterministic()
+        loss.backward()
+
+        if self.max_grad_norm is not None:
+            all_params = [
+                parameter
+                for group in self.param_groups
+                for parameter in group["params"]
+            ]
+            torch.nn.utils.clip_grad_norm_(
+                all_params, max_norm=self.max_grad_norm
+            )
+
+        self.state["n_forwards"] += 1
+        self.state["n_backwards"] += 1
+
+        line_search_forwards = 0
+        line_search_failed = False
+        measurement = None
+
+        for group in self.param_groups:
+            params = group["params"]
+            params_current = copy.deepcopy(params)
+            grad_current = [
+                grad.detach().clone() if grad is not None else None
+                for grad in ut.get_grad_list(params)
+            ]
+            grad_norm = ut.compute_grad_norm(grad_current)
+
+            step_size = ut.reset_step(
+                step_size=batch_step_size,
+                n_batches_per_epoch=group["n_batches_per_epoch"],
+                gamma=group["gamma"],
+                reset_option=group["reset_option"],
+                init_step_size=group["init_step_size"]
+            )
+
+            f_ref_prev = reference_loss_fn()
+            loss_next = loss
+
+            with torch.no_grad():
+                if grad_norm >= 1e-8:
+                    found = 0
+                    step_size_old = step_size
+
+                    for e in range(100):
+                        ut.try_sgd_update(
+                            params, step_size, params_current, grad_current
+                        )
+                        loss_next = closure_deterministic()
+                        self.state["n_forwards"] += 1
+                        line_search_forwards += 1
+
+                        if group["line_search_fn"] == "armijo":
+                            armijo_results = ut.check_armijo_conditions(
+                                step_size=step_size,
+                                step_size_old=step_size_old,
+                                loss=loss,
+                                grad_norm=grad_norm,
+                                loss_next=loss_next,
+                                c=group["c"],
+                                beta_b=group["beta_b"]
+                            )
+                            found, step_size, step_size_old = armijo_results
+                            if found == 1:
+                                break
+
+                        elif group["line_search_fn"] == "goldstein":
+                            goldstein_results = ut.check_goldstein_conditions(
+                                step_size=step_size,
+                                loss=loss,
+                                grad_norm=grad_norm,
+                                loss_next=loss_next,
+                                c=group["c"],
+                                beta_b=group["beta_b"],
+                                beta_f=group["beta_f"],
+                                bound_step_size=group["bound_step_size"],
+                                eta_max=group["eta_max"]
+                            )
+                            found = goldstein_results["found"]
+                            step_size = goldstein_results["step_size"]
+                            if found == 3:
+                                break
+
+                    if found == 0:
+                        line_search_failed = True
+                        step_size = 1e-6
+                        ut.try_sgd_update(
+                            params, step_size, params_current, grad_current
+                        )
+
+            f_ref_curr = reference_loss_fn()
+            loss_curr_batch = (
+                float("nan")
+                if line_search_failed
+                else float(loss_next.detach().cpu())
+            )
+            measurement = {
+                "loss_prev_batch": float(loss.detach().cpu()),
+                "loss_curr_batch": loss_curr_batch,
+                "f_ref_prev": float(f_ref_prev),
+                "f_ref_curr": float(f_ref_curr),
+                "grad_sq_norm": float((grad_norm ** 2).detach().cpu()),
+                "eta_returned": float(step_size),
+                "line_search_failed": bool(line_search_failed)
+            }
+
+            self.state["step_size"] = step_size
+            self.state["step"] += 1
+
+        return loss, line_search_forwards, line_search_failed, measurement

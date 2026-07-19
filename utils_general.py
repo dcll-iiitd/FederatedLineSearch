@@ -570,6 +570,16 @@ class LocalUpdate_FedDyn(object):
         return params_delta
 
 
+def deterministic_sls_closure_seed(context, local_step):
+    seed_sequence = np.random.SeedSequence([
+        int(context["seed"]),
+        int(context["round"]),
+        int(context["client_id"]),
+        int(local_step)
+    ])
+    return int(seed_sequence.generate_state(1, dtype=np.uint32)[0])
+
+
 class LocalUpdate_Sls(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -581,6 +591,8 @@ class LocalUpdate_Sls(object):
         self.use_gradient_clipping = args_hyperparameters['use_gradient_clipping']
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
+        self.reset_option = args_hyperparameters['reset_option']
+        self.eta_lmax = args_hyperparameters['eta_lmax']
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
 
     def train_and_sketch(self, net):
@@ -588,7 +600,12 @@ class LocalUpdate_Sls(object):
 
         # Historical FedSLS was effectively unclipped because its closure cleared
         # the gradients that had been clipped before optimizer.step().
-        optimizer = Sls(net.parameters(), max_grad_norm=None)
+        optimizer = Sls(
+            net.parameters(),
+            init_step_size=self.eta_lmax,
+            reset_option=self.reset_option,
+            max_grad_norm=None
+        )
         prev_net = copy.deepcopy(net)
 
         step_count = 0
@@ -635,6 +652,182 @@ class LocalUpdate_Sls(object):
         }
 
         return model_to_return, search_stats
+
+
+    def train_and_sketch_deterministic(self, net, context):
+        net.train()
+        optimizer = Sls(
+            net.parameters(),
+            init_step_size=self.eta_lmax,
+            reset_option=self.reset_option,
+            max_grad_norm=None
+        )
+        prev_net = copy.deepcopy(net)
+
+        step_count = 0
+        total_line_search_forwards = 0
+        total_forward_evaluations = 0
+        failed_searches = 0
+
+        while step_count < self.args["cp"]:
+            for images, labels in self.ldr_train:
+                images = images.to(self.args["device"])
+                labels = labels.to(self.args["device"])
+
+                if self.use_data_augmentation:
+                    images = self.transform_train(images)
+
+                def closure():
+                    optimizer.zero_grad()
+                    output = net(images)
+                    return self.loss_func(output, labels)
+
+                closure_seed = deterministic_sls_closure_seed(
+                    context, step_count
+                )
+                loss, line_search_forwards, search_failed = (
+                    optimizer.step_with_seed(closure, closure_seed)
+                )
+                total_line_search_forwards += line_search_forwards
+                total_forward_evaluations += 1 + line_search_forwards
+                failed_searches += int(search_failed)
+                step_count += 1
+
+                if step_count >= self.args["cp"]:
+                    break
+
+        with torch.no_grad():
+            vec_curr = parameters_to_vector(net.parameters())
+            vec_prev = parameters_to_vector(prev_net.parameters())
+            model_to_return = vec_curr - vec_prev
+
+        search_stats = {
+            "local_steps": step_count,
+            "line_search_forwards": total_line_search_forwards,
+            "total_forwards": total_forward_evaluations,
+            "total_backwards": step_count,
+            "failed_searches": failed_searches,
+            "final_step_size": float(optimizer.state["step_size"])
+        }
+        return model_to_return, search_stats
+
+    def _reference_loss(self, net, reference_loader):
+        modules = list(net.modules())
+        training_modes = [module.training for module in modules]
+        total_loss = 0.0
+        total_examples = 0
+
+        try:
+            net.eval()
+            with torch.no_grad():
+                for images, labels in reference_loader:
+                    images = images.to(self.args["device"])
+                    labels = labels.to(self.args["device"])
+                    output = net(images)
+                    total_loss += nn.functional.cross_entropy(
+                        output, labels, reduction="sum"
+                    ).item()
+                    total_examples += labels.numel()
+        finally:
+            for module, training_mode in zip(modules, training_modes):
+                module.training = training_mode
+
+        if total_examples == 0:
+            raise ValueError("Kappa reference set must not be empty")
+        return total_loss / total_examples
+
+    def train_and_sketch_measured(self, net, reference_dataset, context):
+        net.train()
+        optimizer = Sls(
+            net.parameters(),
+            init_step_size=self.eta_lmax,
+            reset_option=self.reset_option,
+            max_grad_norm=None
+        )
+        prev_net = copy.deepcopy(net)
+
+        reference_generator = torch.Generator()
+        reference_generator.manual_seed(
+            int(context["seed"]) * 1000003 + int(context["client_id"])
+        )
+        reference_loader = DataLoader(
+            reference_dataset,
+            batch_size=256,
+            shuffle=False,
+            num_workers=0,
+            generator=reference_generator
+        )
+
+        step_count = 0
+        total_line_search_forwards = 0
+        total_forward_evaluations = 0
+        failed_searches = 0
+        measurement_rows = []
+
+        while step_count < self.args["cp"]:
+            for images, labels in self.ldr_train:
+                images = images.to(self.args["device"])
+                labels = labels.to(self.args["device"])
+
+                if self.use_data_augmentation:
+                    images = self.transform_train(images)
+
+                def closure():
+                    optimizer.zero_grad()
+                    output = net(images)
+                    return self.loss_func(output, labels)
+
+                def reference_loss_fn():
+                    return self._reference_loss(net, reference_loader)
+
+                closure_seed = (
+                    deterministic_sls_closure_seed(context, step_count)
+                    if context.get("deterministic_seed", False)
+                    else None
+                )
+                loss, line_search_forwards, search_failed, raw = (
+                    optimizer.step_with_kappa(
+                        closure, reference_loss_fn, closure_seed=closure_seed
+                    )
+                )
+
+                total_line_search_forwards += line_search_forwards
+                total_forward_evaluations += 1 + line_search_forwards
+                failed_searches += int(search_failed)
+
+                measurement_rows.append([
+                    int(context["round"]),
+                    int(context["client_id"]),
+                    step_count,
+                    raw["eta_returned"],
+                    raw["loss_prev_batch"],
+                    raw["loss_curr_batch"],
+                    raw["f_ref_prev"],
+                    raw["f_ref_curr"],
+                    raw["grad_sq_norm"],
+                    raw["line_search_failed"],
+                    int(context["seed"])
+                ])
+
+                step_count += 1
+                if step_count >= self.args["cp"]:
+                    break
+
+        with torch.no_grad():
+            vec_curr = parameters_to_vector(net.parameters())
+            vec_prev = parameters_to_vector(prev_net.parameters())
+            model_to_return = vec_curr - vec_prev
+
+        search_stats = {
+            "local_steps": step_count,
+            "line_search_forwards": total_line_search_forwards,
+            "total_forwards": total_forward_evaluations,
+            "total_backwards": step_count,
+            "failed_searches": failed_searches,
+            "final_step_size": float(optimizer.state["step_size"])
+        }
+
+        return model_to_return, search_stats, measurement_rows
 
 
 class LocalUpdate_scaffold(object):
@@ -790,6 +983,28 @@ class LocalUpdate_fedprox(object):
                 model_to_return = params_delta_vec
 
         return model_to_return
+
+
+
+def get_grad_kappa(net_glob, args, args_hyperparameters, dataset, alg, idx, context, deterministic_seed=False):
+    if alg not in ("fedsls", "fedexpsls"):
+        raise ValueError("Kappa measurement is supported only for SLS algorithms")
+    context = dict(context)
+    context["deterministic_seed"] = deterministic_seed
+    local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
+    return local.train_and_sketch_measured(
+        copy.deepcopy(net_glob), context["reference_dataset"], context
+    )
+
+
+
+def get_grad_deterministic_sls(net_glob, args, args_hyperparameters, dataset, alg, context):
+    if alg not in ("fedsls", "fedexpsls"):
+        raise ValueError("Deterministic SLS seeding is supported only for SLS algorithms")
+    local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
+    return local.train_and_sketch_deterministic(
+        copy.deepcopy(net_glob), context
+    )
 
 
 

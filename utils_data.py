@@ -188,6 +188,25 @@ def getDirichletData_equal(y, n, alpha, num_c):
     
     
 
+def build_kappa_reference_sets(dataset_train, run_seed, max_samples=1024):
+    reference_sets = []
+    for client_id, client_dataset in enumerate(dataset_train):
+        if len(client_dataset) <= max_samples:
+            reference_sets.append(client_dataset)
+            continue
+
+        seed_sequence = np.random.SeedSequence([int(run_seed), int(client_id)])
+        private_rng = np.random.default_rng(seed_sequence)
+        indices = private_rng.choice(
+            len(client_dataset), size=max_samples, replace=False
+        )
+        reference_sets.append(
+            torch.utils.data.Subset(client_dataset, indices.tolist())
+        )
+
+    return reference_sets
+
+
 def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
 
     trans_cifar = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.491, 0.482, 0.447], std=[0.247, 0.243, 0.262])])
