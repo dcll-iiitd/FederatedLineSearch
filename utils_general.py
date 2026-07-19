@@ -817,6 +817,11 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_m
         grad = local.train_and_sketch(copy.deepcopy(net_glob), idx, mem_mat, c)
         return grad
 
+    elif alg == 'fedexprox':
+         from fedexprox import LocalUpdateFedExProx
+         local = LocalUpdateFedExProx(args, args_hyperparameters, dataset)
+         return local.train_and_sketch(copy.deepcopy(net_glob))
+
     elif(alg=='fedprox' or alg=='fedprox(exp)'):
 
 

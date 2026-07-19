@@ -12,7 +12,7 @@ python main.py --seed 0 --algorithm "fedavg" --dataset "CIFAR10" --model "resnet
 
 Explanation of arguments:
 1. `seed`: Choice of seed to fix randomness in experiment.
-2. `algorithm`: Choice of algorithm. Possible options are `fedavg`, `fedexp`,`scaffold`, `scaffold(exp)`, `fedprox`, `fedprox(exp)`, `fedadam`, `fedadagrad`, `fedavgm`, `fedavgm(exp)`,`fedsls`,`fedexpsls`.
+2. `algorithm`: Choice of algorithm. Possible options are `fedavg`, `fedexp`,`scaffold`, `scaffold(exp)`, `fedprox`, `fedprox(exp)`, `fedexprox`, `fedadam`, `fedadagrad`, `fedavgm`, `fedavgm(exp)`,`fedsls`,`fedexpsls`.
    
 3. `dataset`: Choice of dataset. Possible options are `CIFAR10`,`CIFAR100`,`femnist`.
 
@@ -26,6 +26,10 @@ Explanation of arguments:
 
 8. `alpha`: Choice of alpha parameter for the Dirichlet distribution used to create heterogeneity in the client datasets for CIFAR and CINIC datasets.
 
+
+### FedExProx-SToPS
+
+Use `--algorithm fedexprox` to run the FedExProx-SToPS variant. Each selected client approximately solves the same proximal local objective used by FedProx. The server then uses the uniform selected-client average and the SToPS extrapolation factor from the reference implementation. At least two clients must participate per round.
 
 ### ToyProblem
 
