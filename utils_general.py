@@ -593,6 +593,7 @@ class LocalUpdate_Sls(object):
         self.weight_decay = args_hyperparameters['weight_decay']
         self.reset_option = args_hyperparameters['reset_option']
         self.eta_lmax = args_hyperparameters['eta_lmax']
+        self.armijo_c = args_hyperparameters.get('armijo_c', 0.1)
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
 
     def train_and_sketch(self, net):
@@ -603,6 +604,7 @@ class LocalUpdate_Sls(object):
         optimizer = Sls(
             net.parameters(),
             init_step_size=self.eta_lmax,
+            c=self.armijo_c,
             reset_option=self.reset_option,
             max_grad_norm=None
         )
@@ -659,6 +661,7 @@ class LocalUpdate_Sls(object):
         optimizer = Sls(
             net.parameters(),
             init_step_size=self.eta_lmax,
+            c=self.armijo_c,
             reset_option=self.reset_option,
             max_grad_norm=None
         )
@@ -741,6 +744,7 @@ class LocalUpdate_Sls(object):
         optimizer = Sls(
             net.parameters(),
             init_step_size=self.eta_lmax,
+            c=self.armijo_c,
             reset_option=self.reset_option,
             max_grad_norm=None
         )

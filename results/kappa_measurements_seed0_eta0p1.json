@@ -1,0 +1,9 @@
+{
+  "seed": 0,
+  "algorithm": "fedsls",
+  "reset_option": 2,
+  "eta_lmax": 0.1,
+  "armijo_c": 0.1,
+  "kappa_measure_every": 10,
+  "deterministic_sls_seed": true
+}

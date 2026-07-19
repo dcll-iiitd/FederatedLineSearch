@@ -36,6 +36,7 @@ FedSLS and FedExpSLS accept two optional line-search arguments:
 
 - `--reset-option {0,1,2}` (default `1`). Option 0 reuses the previous accepted step, option 1 grows the previous step before backtracking, and option 2 restarts from `init_step_size` every local step.
 - `--eta-lmax FLOAT` (default `1.0`). This is passed to `Sls` as `init_step_size`. Under reset option 2, `init_step_size` is the analysis's `eta_lmax`.
+- `--armijo-c FLOAT` (default `0.1`). This overrides the Armijo sufficient-decrease constant for SLS runs; omitting it preserves historical behavior.
 
 These defaults reproduce the behavior that existed before the flags were added. Values selected for a paper experiment must be supplied on the command line; the default remains 1.0.
 

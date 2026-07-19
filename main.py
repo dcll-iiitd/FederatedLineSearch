@@ -27,10 +27,13 @@ parser.add_argument('--num_rounds', type=int, required=True)
 parser.add_argument('--alpha', type=float, required=True)
 parser.add_argument('--reset-option', type=int, choices=(0, 1, 2), default=1)
 parser.add_argument('--eta-lmax', type=float, default=1.0)
+parser.add_argument('--armijo-c', type=float, default=0.1)
 parser.add_argument('--measure-kappa', action='store_true', default=False)
 parser.add_argument('--kappa-measure-every', type=int, default=10)
 parser.add_argument('--deterministic-sls-seed', action='store_true', default=False)
 
+if not 0.0 < args_required.armijo_c < 1.0:
+    parser.error("--armijo-c must be strictly between 0 and 1")
 args_required = parser.parse_args()
 
 if args_required.kappa_measure_every <= 0:
@@ -54,6 +57,7 @@ num_rounds = args_required.num_rounds
 alpha = args_required.alpha
 reset_option = args_required.reset_option
 eta_lmax = args_required.eta_lmax
+armijo_c = args_required.armijo_c
 measure_kappa = args_required.measure_kappa
 kappa_measure_every = args_required.kappa_measure_every
 deterministic_sls_seed = args_required.deterministic_sls_seed
@@ -94,9 +98,10 @@ kappa_csv_path = None
 if measure_kappa:
   kappa_reference_sets = build_kappa_reference_sets(dataset_train, seed)
   eta_token = format(eta_lmax, ".12g").replace(".", "p").replace("-", "m")
+  c_token = format(armijo_c, ".12g").replace(".", "p").replace("-", "m")
   os.makedirs("results", exist_ok=True)
   kappa_csv_path = os.path.join(
-      "results", f"kappa_measurements_seed{seed}_eta{eta_token}.csv"
+      "results", f"kappa_measurements_seed{seed}_eta{eta_token}_c{c_token}.csv"
   )
   kappa_metadata_path = os.path.splitext(kappa_csv_path)[0] + ".json"
   with open(kappa_csv_path, "w", newline="") as csv_file:
@@ -109,7 +114,7 @@ if measure_kappa:
   with open(kappa_metadata_path, "w") as metadata_file:
     json.dump({
         "seed": seed, "algorithm": algorithm, "reset_option": reset_option,
-        "eta_lmax": eta_lmax, "armijo_c": 0.1,
+        "eta_lmax": eta_lmax, "armijo_c": armijo_c,
         "kappa_measure_every": kappa_measure_every,
         "deterministic_sls_seed": deterministic_sls_seed
     }, metadata_file, indent=2)
@@ -457,7 +462,7 @@ for alg in algs:
           local_lr = decay * local_lr
         epsilon = decay*decay*epsilon
 
-        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'feddyn_alpha': feddyn_alpha, 'reset_option': reset_option, 'eta_lmax': eta_lmax, 'use_augmentation':True}
+        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'feddyn_alpha': feddyn_alpha, 'reset_option': reset_option, 'eta_lmax': eta_lmax, 'armijo_c': armijo_c, 'use_augmentation':True}
         
         
         if(dataset=='CIFAR10' or dataset=='CIFAR100' or dataset=='CINIC10'):

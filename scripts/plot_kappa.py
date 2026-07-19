@@ -148,18 +148,14 @@ def main():
 
     ratio_groups = defaultdict(lambda: defaultdict(list))
     eta_groups = defaultdict(lambda: defaultdict(list))
-    armijo_by_cap = {}
 
     for run, ratios, eta_stats in aggregated:
-        cap = run["eta_lmax"]
-        previous_c = armijo_by_cap.setdefault(cap, run["armijo_c"])
-        if not math.isclose(previous_c, run["armijo_c"], rel_tol=0, abs_tol=0):
-            raise ValueError(f"Inconsistent armijo_c values for eta_lmax={cap}")
+        key = (run["eta_lmax"], run["armijo_c"])
 
         for round_number, (ratio_a, ratio_b) in ratios.items():
-            ratio_groups[cap][round_number].append((ratio_a, ratio_b))
+            ratio_groups[key][round_number].append((ratio_a, ratio_b))
         for round_number, stats in eta_stats.items():
-            eta_groups[cap][round_number].append(stats)
+            eta_groups[key][round_number].append(stats)
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     figure, (ratio_axis, eta_axis) = plt.subplots(
@@ -168,15 +164,16 @@ def main():
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(ratio_groups), 1)))
     all_positive_ratios = []
 
-    for color, cap in zip(colors, sorted(ratio_groups)):
-        round_numbers = sorted(ratio_groups[cap])
+    for color, key in zip(colors, sorted(ratio_groups)):
+        cap, armijo_c = key
+        round_numbers = sorted(ratio_groups[key])
         ratio_a_mean = []
         ratio_a_std = []
         ratio_b_mean = []
         ratio_b_std = []
 
         for round_number in round_numbers:
-            values = ratio_groups[cap][round_number]
+            values = ratio_groups[key][round_number]
             a_mean, a_std = mean_std([value[0] for value in values])
             b_mean, b_std = mean_std([value[1] for value in values])
             ratio_a_mean.append(a_mean)
@@ -200,7 +197,7 @@ def main():
 
         ratio_axis.plot(
             x_values, a_mean, color=color, linestyle="-",
-            label=rf"$R_a$, $\eta_{{lmax}}={cap:g}$"
+            label=rf"$R_a$, $c={armijo_c:g}$, $\eta_{{lmax}}={cap:g}$"
         )
         ratio_axis.fill_between(
             x_values, np.maximum(a_mean - a_std, 0), a_mean + a_std,
@@ -208,36 +205,36 @@ def main():
         )
         ratio_axis.plot(
             x_values, b_mean, color=color, linestyle="--",
-            label=rf"$R_b$, $\eta_{{lmax}}={cap:g}$"
+            label=rf"$R_b$, $c={armijo_c:g}$, $\eta_{{lmax}}={cap:g}$"
         )
         ratio_axis.fill_between(
             x_values, np.maximum(b_mean - b_std, 0), b_mean + b_std,
             color=color, alpha=0.12
         )
 
-        bound = armijo_by_cap[cap] / (2.0 * cap)
+        bound = armijo_c / (2.0 * cap)
         ratio_axis.axhline(
             bound, color=color, linestyle=":", linewidth=1.5,
-            label=rf"$c/(2\eta_{{lmax}})={bound:g}$"
+            label=rf"$c={armijo_c:g}$ bound $={bound:g}$"
         )
 
-        eta_rounds = sorted(eta_groups[cap])
+        eta_rounds = sorted(eta_groups[key])
         pooled = {}
         for round_number in eta_rounds:
-            values = np.asarray(eta_groups[cap][round_number], dtype=float)
+            values = np.asarray(eta_groups[key][round_number], dtype=float)
             pooled[round_number] = np.mean(values, axis=0)
 
         eta_axis.plot(
             eta_rounds, [pooled[r][0] for r in eta_rounds],
-            color=color, linestyle="-", label=rf"mean, cap={cap:g}"
+            color=color, linestyle="-", label=rf"mean, c={armijo_c:g}, cap={cap:g}"
         )
         eta_axis.plot(
             eta_rounds, [pooled[r][1] for r in eta_rounds],
-            color=color, linestyle="--", label=rf"median, cap={cap:g}"
+            color=color, linestyle="--", label=rf"median, c={armijo_c:g}, cap={cap:g}"
         )
         eta_axis.plot(
             eta_rounds, [pooled[r][2] for r in eta_rounds],
-            color=color, linestyle=":", label=rf"p95, cap={cap:g}"
+            color=color, linestyle=":", label=rf"p95, c={armijo_c:g}, cap={cap:g}"
         )
 
     if all_positive_ratios:
