@@ -32,10 +32,10 @@ parser.add_argument('--measure-kappa', action='store_true', default=False)
 parser.add_argument('--kappa-measure-every', type=int, default=10)
 parser.add_argument('--deterministic-sls-seed', action='store_true', default=False)
 
-if not 0.0 < args_required.armijo_c < 1.0:
-    parser.error("--armijo-c must be strictly between 0 and 1")
 args_required = parser.parse_args()
 
+if not 0.0 < args_required.armijo_c < 1.0:
+    parser.error("--armijo-c must be strictly between 0 and 1")
 if args_required.kappa_measure_every <= 0:
     parser.error("--kappa-measure-every must be greater than zero")
 if args_required.measure_kappa and args_required.algorithm not in ("fedsls", "fedexpsls"):
