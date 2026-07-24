@@ -22,8 +22,12 @@ parser.add_argument('--num_clients', type=int, required=True)
 parser.add_argument('--num_participating_clients', type=int, required=True)
 parser.add_argument('--num_rounds', type=int, required=True)
 parser.add_argument('--alpha', type=float, required=True)
+parser.add_argument('--fedexprox-alpha', type=float, default=1.0)
 
 args_required = parser.parse_args()
+
+if args_required.algorithm == 'fedexprox' and args_required.fedexprox_alpha <= 0:
+  parser.error("--fedexprox-alpha must be greater than zero")
 
 
 
@@ -35,6 +39,7 @@ num_clients = args_required.num_clients
 num_participating_clients = args_required.num_participating_clients
 num_rounds = args_required.num_rounds
 alpha = args_required.alpha
+fedexprox_alpha = args_required.fedexprox_alpha
 
 print_every_test = 5
 print_every_train = 5
@@ -316,7 +321,7 @@ if dataset in ('EMNIST', 'femnist', 'MNIST', 'shakespeare'):
 
 eta_l_algs = {'fedavgm(exp)': eta_l_fedavgm_exp, 'fedavgm': eta_l_fedavgm,'fedadam':eta_l_fedadam, 'fedprox':eta_l_fedprox, 'fedprox(exp)': eta_l_fedexp, 'fedexprox': eta_l_fedprox, 'fedavg': eta_l_fedavg, 'fedadagrad': eta_l_fedadagrad, 'fedexp': eta_l_fedexp, 'scaffold': eta_l_scaffold, 'scaffold(exp)': eta_l_scaffold_exp , 'fedexpsls':eta_l_fedexp,'fedsls':eta_l_fedavg, 'feddyn': eta_l_fedavg}
 
-eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedexprox': 'stops', 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive','fedexpsls': 'adaptive', 'fedsls':eta_g_fedavg, 'feddyn': 1}
+eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedexprox': fedexprox_alpha, 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive','fedexpsls': 'adaptive', 'fedsls':eta_g_fedavg, 'feddyn': 1}
 
 epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 'fedprox':0, 'fedprox(exp)':0, 'fedexprox': 0, 'fedavg': 0, 'fedadagrad':0, 'fedexp':epsilon_fedexp, 'scaffold': 0, 'scaffold(exp)': epsilon_scaffold_exp,'fedexpsls':epsilon_fedexp, 'fedsls': 0, 'feddyn': 0}
 
@@ -421,10 +426,6 @@ for alg in algs:
           args_hyperparameters['use_augmentation'] = False
       
         S = args['num_participating_clients']
-        if alg == 'fedexprox' and S < 2:
-          raise ValueError(
-              'FedExProx-SToPS requires at least two participating clients'
-          )
 
         ind = np.random.choice(n,S,replace=False)
 
@@ -441,8 +442,6 @@ for alg in algs:
         
         p_sum = 0
         feddyn_delta_sum = torch.zeros(d, device=args['device']) if alg == 'feddyn' else None
-        fedexprox_delta_sum = torch.zeros(d, device=args['device']) if alg == 'fedexprox' else None
-        fedexprox_objective_sum = 0.0
 
         # FedSLS line-search statistics for this communication round
         round_local_steps = 0
@@ -478,11 +477,7 @@ for alg in algs:
                 mem_mat
             )
 
-            if alg == 'fedexprox':
-                grad, proximal_objective = result
-                fedexprox_delta_sum += grad
-                fedexprox_objective_sum += proximal_objective
-            elif alg in ('fedsls', 'fedexpsls'):
+            if alg in ('fedsls', 'fedexpsls'):
                 grad, search_stats = result
 
                 round_local_steps += search_stats["local_steps"]
@@ -497,10 +492,9 @@ for alg in algs:
             else:
                 grad = result
 
-            if alg != 'fedexprox':
-                grad_norm_sum += p[i] * torch.linalg.norm(grad)**2
-                grad_avg = grad_avg + p[i] * grad
-                p_sum += p[i]
+            grad_norm_sum += p[i] * torch.linalg.norm(grad)**2
+            grad_avg = grad_avg + p[i] * grad
+            p_sum += p[i]
             if alg == 'feddyn':
                 feddyn_delta_sum += grad
 
@@ -556,12 +550,8 @@ for alg in algs:
 
 
 
-            if alg == 'fedexprox':
-              grad_avg = fedexprox_delta_sum / S
-              grad_norm_avg = torch.tensor(0.0, device=args['device'])
-            else:
-              grad_avg = grad_avg/p_sum
-              grad_norm_avg = grad_norm_sum/p_sum
+            grad_avg = grad_avg/p_sum
+            grad_norm_avg = grad_norm_sum/p_sum
 
             if alg == 'feddyn':
               feddyn_avg_delta = feddyn_delta_sum / S
@@ -605,19 +595,11 @@ for alg in algs:
 
             grad_avg_norm = torch.linalg.norm(grad_avg)**2
 
-            if eta_g == 'stops':
-              mean_proximal_objective = fedexprox_objective_sum / S
-              from fedexprox import stops_step_size
-              stops_numerator = 2.0 * mean_proximal_objective
-              stops_denominator = mu * grad_avg_norm + 1e-10
-              eta_g = stops_step_size(
-                  mean_proximal_objective, grad_avg, mu
-              )
+            if alg == 'fedexprox':
               print(
-                  f"[FedExProx-SToPS] round={t} "
-                  f"alpha={float(eta_g):.8g} "
-                  f"numerator={float(stops_numerator):.8g} "
-                  f"denominator={float(stops_denominator):.8g}",
+                  f"[FedExProx] round={t} "
+                  f"alpha={float(eta_g):.8g} mu={mu:.8g} "
+                  f"gamma={1.0 / mu:.8g}",
                   flush=True
               )
 

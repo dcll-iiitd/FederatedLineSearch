@@ -1,22 +1,13 @@
 from utils_libs import *
 
 
-def stops_step_size(mean_proximal_objective, mean_delta, mu, epsilon=1e-10):
-    """Return the multi-client SToPS extrapolation factor."""
-    if mu <= 0:
-        raise ValueError("FedExProx requires mu > 0 (equivalently gamma > 0)")
-    denominator = mu * torch.linalg.norm(mean_delta) ** 2 + epsilon
-    return 2.0 * mean_proximal_objective / denominator
-
-
 class LocalUpdateFedExProx(object):
-    """Approximate a client proximal point and return its proximal objective."""
+    """Approximately solve a client proximal objective and return its update."""
 
     def __init__(self, args, hyperparameters, dataset):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
         self.train_loader = DataLoader(dataset, batch_size=args['bs'], shuffle=True)
-        self.objective_loader = DataLoader(dataset, batch_size=args['bs'], shuffle=False)
         self.lr = hyperparameters['eta_l']
         self.mu = hyperparameters['mu']
         self.weight_decay = hyperparameters['weight_decay']
@@ -65,23 +56,5 @@ class LocalUpdateFedExProx(object):
 
         with torch.no_grad():
             client_delta = parameters_to_vector(net.parameters()) - initial_parameters
-            net.eval()
-            loss_sum = 0.0
-            sample_count = 0
-            for images, labels in self.objective_loader:
-                images = images.to(self.args['device'])
-                labels = labels.to(self.args['device'])
-                output = net(images)
-                loss_sum += F.cross_entropy(
-                    output, labels, reduction='sum'
-                ).item()
-                sample_count += labels.numel()
 
-            if sample_count == 0:
-                raise ValueError("FedExProx received an empty client dataset")
-            client_loss = loss_sum / sample_count
-            proximal_objective = client_loss + 0.5 * self.mu * (
-                torch.linalg.norm(client_delta).item() ** 2
-            )
-
-        return client_delta, proximal_objective
+        return client_delta

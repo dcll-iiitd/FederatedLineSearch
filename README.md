@@ -27,9 +27,9 @@ Explanation of arguments:
 8. `alpha`: Choice of alpha parameter for the Dirichlet distribution used to create heterogeneity in the client datasets for CIFAR and CINIC datasets.
 
 
-### FedExProx-SToPS
+### FedExProx with constant extrapolation
 
-Use `--algorithm fedexprox` to run the FedExProx-SToPS variant. Each selected client approximately solves the same proximal local objective used by FedProx. The server then uses the uniform selected-client average and the SToPS extrapolation factor from the reference implementation. At least two clients must participate per round.
+Use `--algorithm fedexprox` to run inexact FedExProx with constant server extrapolation. Each selected client approximately solves the same proximal local objective used by FedProx, and the server applies `--fedexprox-alpha` (default `1.0`) to the same sample-weighted mean client update used by FedProx. Setting `--fedexprox-alpha 1.0` recovers ordinary FedProx aggregation; values greater than one extrapolate.
 
 ### ToyProblem
 
