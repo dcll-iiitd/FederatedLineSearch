@@ -63,6 +63,9 @@ def load_run(csv_path):
         "seed": int(metadata["seed"]),
         "eta_lmax": eta_lmax,
         "armijo_c": armijo_c,
+        "dataset": metadata.get("dataset", "unknown"),
+        "model": metadata.get("model", "unknown"),
+        "batch_size": int(metadata.get("batch_size", 50)),
         "rows": rows,
     }
 
@@ -129,6 +132,7 @@ def main():
         "--output",
         default="results/kappa_ratio.png",
     )
+    parser.add_argument("--title", default="Kappa-f accuracy measurements")
     args = parser.parse_args()
 
     csv_paths = sorted(glob.glob(args.input_glob))
@@ -142,15 +146,37 @@ def main():
         aggregated.append((run, ratios, eta_stats))
         for round_number, rate in sorted(failure_rates.items()):
             print(
-                f"seed={run['seed']} eta_lmax={run['eta_lmax']:g} "
+                f"dataset={run['dataset']} model={run['model']} "
+                f"batch={run['batch_size']} seed={run['seed']} "
+                f"eta_lmax={run['eta_lmax']:g} "
                 f"round={round_number} line_search_failure_rate={rate:.6f}"
             )
+        if ratios:
+            final_round = max(ratios)
+            final_a, final_b = ratios[final_round]
+            run_bound = run["armijo_c"] / (2.0 * run["eta_lmax"])
+            final_failure = failure_rates.get(final_round, math.nan)
+            print(
+                f"VERDICT dataset={run['dataset']} model={run['model']} "
+                f"batch={run['batch_size']} seed={run['seed']} "
+                f"round={final_round} R_a={final_a:.8g} R_b={final_b:.8g} "
+                f"failure_rate={final_failure:.6f} bound={run_bound:g} "
+                f"R_a_below={final_a < run_bound} R_b_below={final_b < run_bound}"
+            )
+
+    caps = {run["eta_lmax"] for run in runs}
+    armijo_values = {run["armijo_c"] for run in runs}
+    if len(caps) != 1 or len(armijo_values) != 1:
+        raise ValueError("All overlaid runs must use the same eta_lmax and armijo_c")
+    cap = next(iter(caps))
+    armijo_c = next(iter(armijo_values))
+    bound = armijo_c / (2.0 * cap)
 
     ratio_groups = defaultdict(lambda: defaultdict(list))
     eta_groups = defaultdict(lambda: defaultdict(list))
 
     for run, ratios, eta_stats in aggregated:
-        key = (run["eta_lmax"], run["armijo_c"])
+        key = (run["dataset"], run["model"], run["batch_size"])
 
         for round_number, (ratio_a, ratio_b) in ratios.items():
             ratio_groups[key][round_number].append((ratio_a, ratio_b))
@@ -165,7 +191,8 @@ def main():
     all_positive_ratios = []
 
     for color, key in zip(colors, sorted(ratio_groups)):
-        cap, armijo_c = key
+        dataset, model, batch_size = key
+        group_label = f"{dataset}, {model}, b={batch_size}"
         round_numbers = sorted(ratio_groups[key])
         ratio_a_mean = []
         ratio_a_std = []
@@ -197,7 +224,7 @@ def main():
 
         ratio_axis.plot(
             x_values, a_mean, color=color, linestyle="-",
-            label=rf"$R_a$, $c={armijo_c:g}$, $\eta_{{lmax}}={cap:g}$"
+            label=f"R_a, {group_label}"
         )
         ratio_axis.fill_between(
             x_values, np.maximum(a_mean - a_std, 0), a_mean + a_std,
@@ -205,18 +232,13 @@ def main():
         )
         ratio_axis.plot(
             x_values, b_mean, color=color, linestyle="--",
-            label=rf"$R_b$, $c={armijo_c:g}$, $\eta_{{lmax}}={cap:g}$"
+            label=f"R_b, {group_label}"
         )
         ratio_axis.fill_between(
             x_values, np.maximum(b_mean - b_std, 0), b_mean + b_std,
             color=color, alpha=0.12
         )
 
-        bound = armijo_c / (2.0 * cap)
-        ratio_axis.axhline(
-            bound, color=color, linestyle=":", linewidth=1.5,
-            label=rf"$c={armijo_c:g}$ bound $={bound:g}$"
-        )
 
         eta_rounds = sorted(eta_groups[key])
         pooled = {}
@@ -226,16 +248,21 @@ def main():
 
         eta_axis.plot(
             eta_rounds, [pooled[r][0] for r in eta_rounds],
-            color=color, linestyle="-", label=rf"mean, c={armijo_c:g}, cap={cap:g}"
+            color=color, linestyle="-", label=f"mean, {group_label}"
         )
         eta_axis.plot(
             eta_rounds, [pooled[r][1] for r in eta_rounds],
-            color=color, linestyle="--", label=rf"median, c={armijo_c:g}, cap={cap:g}"
+            color=color, linestyle="--", label=f"median, {group_label}"
         )
         eta_axis.plot(
             eta_rounds, [pooled[r][2] for r in eta_rounds],
-            color=color, linestyle=":", label=rf"p95, c={armijo_c:g}, cap={cap:g}"
+            color=color, linestyle=":", label=f"p95, {group_label}"
         )
+
+    ratio_axis.axhline(
+        bound, color="black", linestyle=":", linewidth=1.5,
+        label=f"bound c/(2 eta_lmax)={bound:g}"
+    )
 
     if all_positive_ratios:
         smallest = min(all_positive_ratios)
@@ -244,7 +271,7 @@ def main():
             ratio_axis.set_yscale("log")
 
     ratio_axis.set_ylabel(r"$\kappa_f$ ratio of sums")
-    ratio_axis.set_title("Kappa-f accuracy measurements")
+    ratio_axis.set_title(args.title)
     ratio_axis.grid(True, alpha=0.25)
     ratio_axis.legend(ncol=2, fontsize=8)
 

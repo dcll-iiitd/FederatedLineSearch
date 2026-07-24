@@ -28,20 +28,26 @@ parser.add_argument('--alpha', type=float, required=True)
 parser.add_argument('--reset-option', type=int, choices=(0, 1, 2), default=1)
 parser.add_argument('--eta-lmax', type=float, default=1.0)
 parser.add_argument('--armijo-c', type=float, default=0.1)
+parser.add_argument('--batch-size', type=int, default=50)
 parser.add_argument('--measure-kappa', action='store_true', default=False)
 parser.add_argument('--kappa-measure-every', type=int, default=10)
+parser.add_argument('--kappa-output', type=str, default=None)
 parser.add_argument('--deterministic-sls-seed', action='store_true', default=False)
 
 args_required = parser.parse_args()
 
 if not 0.0 < args_required.armijo_c < 1.0:
     parser.error("--armijo-c must be strictly between 0 and 1")
+if args_required.batch_size <= 0:
+    parser.error("--batch-size must be greater than zero")
 if args_required.kappa_measure_every <= 0:
     parser.error("--kappa-measure-every must be greater than zero")
 if args_required.measure_kappa and args_required.algorithm not in ("fedsls", "fedexpsls"):
     parser.error("--measure-kappa is supported only for fedsls and fedexpsls")
 if args_required.measure_kappa and args_required.reset_option != 2:
     parser.error("--measure-kappa requires --reset-option 2")
+if args_required.kappa_output and not args_required.measure_kappa:
+    parser.error("--kappa-output requires --measure-kappa")
 if args_required.deterministic_sls_seed and args_required.algorithm not in ("fedsls", "fedexpsls"):
     parser.error("--deterministic-sls-seed is supported only for fedsls and fedexpsls")
 
@@ -58,6 +64,7 @@ alpha = args_required.alpha
 reset_option = args_required.reset_option
 eta_lmax = args_required.eta_lmax
 armijo_c = args_required.armijo_c
+batch_size = args_required.batch_size
 measure_kappa = args_required.measure_kappa
 kappa_measure_every = args_required.kappa_measure_every
 deterministic_sls_seed = args_required.deterministic_sls_seed
@@ -68,6 +75,8 @@ print_every_train = 5
 
 
 filename = "results_"+str(seed)+"_"+algorithm+"_"+dataset+"_"+model+"_"+str(num_clients)+"_"+str(num_participating_clients)+"_"+str(num_rounds)+"_"+str(alpha)
+if measure_kappa:
+  filename += f"_b{batch_size}"
 filename_txt = filename + ".txt"
 
 
@@ -100,9 +109,12 @@ if measure_kappa:
   eta_token = format(eta_lmax, ".12g").replace(".", "p").replace("-", "m")
   c_token = format(armijo_c, ".12g").replace(".", "p").replace("-", "m")
   os.makedirs("results", exist_ok=True)
-  kappa_csv_path = os.path.join(
+  kappa_csv_path = args_required.kappa_output or os.path.join(
       "results", f"kappa_measurements_seed{seed}_eta{eta_token}_c{c_token}.csv"
   )
+  if not kappa_csv_path.endswith(".csv"):
+    parser.error("--kappa-output must end with .csv")
+  os.makedirs(os.path.dirname(kappa_csv_path) or ".", exist_ok=True)
   kappa_metadata_path = os.path.splitext(kappa_csv_path)[0] + ".json"
   with open(kappa_csv_path, "w", newline="") as csv_file:
     writer = csv.writer(csv_file)
@@ -114,6 +126,7 @@ if measure_kappa:
   with open(kappa_metadata_path, "w") as metadata_file:
     json.dump({
         "seed": seed, "algorithm": algorithm, "reset_option": reset_option,
+        "dataset": dataset, "model": model, "batch_size": batch_size,
         "eta_lmax": eta_lmax, "armijo_c": armijo_c,
         "kappa_measure_every": kappa_measure_every,
         "deterministic_sls_seed": deterministic_sls_seed
@@ -127,7 +140,7 @@ dict_results = {} ###dictionary to store results for all algorithms
 ###Default training parameters for all algorithms
 
 args={
-"bs":50,   ###batch size
+"bs":batch_size,   ###batch size
 "cp":20,   ### number of local steps
 "device":'cuda:0',
 "rounds":num_rounds, 
