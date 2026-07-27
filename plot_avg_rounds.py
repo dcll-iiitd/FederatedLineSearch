@@ -37,7 +37,18 @@ def main():
     args = ap.parse_args()
 
     # --- lock pixel size exactly (395x316 @ 96 dpi) ---
-    fig, ax = plt.subplots(figsize=(FIG_W_PX / DPI, FIG_H_PX / DPI), dpi=DPI)
+    fig, ax = plt.subplots(
+        figsize=(FIG_W_PX / DPI, FIG_H_PX / DPI),
+        dpi=DPI
+    )
+    # added for CIFAR10
+    fig.subplots_adjust(
+        left=0.17,
+        right=0.97,
+        bottom=0.17,
+        top=0.97
+    )
+
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
@@ -71,6 +82,12 @@ def main():
     # leg.get_frame().set_alpha(0.8)          # close to mpl default look
     # leg.get_frame().set_edgecolor("0.8")    # light grey border
     # leg.get_frame().set_linewidth(1.0)
+    ax.set_xlabel("Communication round", fontsize=12)
+
+    if args.metric == "loss":
+        ax.set_ylabel("Training loss", fontsize=12)
+    else:
+        ax.set_ylabel("Test accuracy (%)", fontsize=12)
 
     leg = ax.legend(loc=legend_loc, frameon=True, fontsize=12)  # increase legend font
 
@@ -85,9 +102,7 @@ def main():
         pdf_out = os.path.splitext(args.out)[0] + ".pdf"
         fig.savefig(
             pdf_out,
-            facecolor="white",
-            bbox_inches="tight",   # crop the PDF page to the content
-            pad_inches=0.1        # tiny padding; use 0.0 if you want zero border
+            facecolor="white"
         )
 
     print(f"Saved: {args.out}  ({FIG_W_PX}x{FIG_H_PX} @ {DPI} dpi)")

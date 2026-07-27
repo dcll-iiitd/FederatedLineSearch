@@ -18,6 +18,9 @@ ALGO_COLOR = {
 #     "FedAvg": dict(linestyle="--", linewidth=2.6),
 #     "FedExp": dict(linestyle="-",  linewidth=2.2),
 # }
+FIG_W_PX = 790
+FIG_H_PX = 632
+DPI = 192
 
 def read_avg_csv(path):
     xs, ys, stds = [], [], []
@@ -47,7 +50,17 @@ def main():
     ap.add_argument("--band", action="store_true")
     args = ap.parse_args()
 
-    plt.figure(figsize=(8,6))
+    fig, ax = plt.subplots(
+        figsize=(FIG_W_PX / DPI, FIG_H_PX / DPI),
+        dpi=DPI
+    )
+
+    fig.subplots_adjust(
+        left=0.17,
+        right=0.97,
+        bottom=0.17,
+        top=0.97
+    )
 
     for item in args.algo:
         name, path = item.split("=")
@@ -75,16 +88,19 @@ def main():
         #     hi = [m+s for m,s in zip(ys, stds)]
             # plt.fill_between(xs, lo, hi, alpha=0.15, color=c)
 
-    plt.xlabel("Time (sec)", fontsize=12)
+    plt.xlabel("Wall-clock time (seconds)", fontsize=12)
     plt.ylabel(args.ylabel, fontsize=12)
     plt.title(args.title, fontsize=14)
     plt.legend(fontsize=10)
     plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(args.out, dpi=200)
+    # plt.tight_layout()
+    plt.savefig(args.out, dpi=DPI, facecolor="white")
+
     if args.pdf:
-        plt.savefig(os.path.splitext(args.out)[0] + ".pdf")
-    print("Saved:", args.out)
+        plt.savefig(
+            os.path.splitext(args.out)[0] + ".pdf",
+            facecolor="white"
+        )
 
 if __name__ == "__main__":
     main()
