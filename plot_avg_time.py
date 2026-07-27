@@ -4,12 +4,14 @@ import argparse, csv, os
 import matplotlib.pyplot as plt
 
 ALGO_COLOR = {
-    "FedExpSls": "#080bb4",
-    "FedAvg": "#006400",
-    "FedExp": "#500C90E3",
-    "FedExpProx": "#b51212",
-    "FedSls": "#ff7f0e",
+    "FedAvg": "#008000",
     "FedAdam": "#2E9787",
+    "FedDyn": "#E377C2",
+    "SCAFFOLD": "#8C564B",
+    "FedExp": "#800080",
+    "FedSLS": "#FF7F0E",
+    "FedExpSLS": "#0000FF",
+    "FedExProx": "#D62728",
 }
 
 # ALGO_STYLE = {
@@ -57,11 +59,11 @@ def main():
 
         # draw FedAvg on top so it doesn't get hidden when overlapping
         z = 10 if name == "FedAvg" else 6 if name == "FedExp" else 3
-        if name == "FedAvg":
-            ys_plot = [y + 1e-3 for y in ys]  # tiny visual offset
-        else:
-            ys_plot = ys
-
+        # if name == "FedAvg":
+        #     ys_plot = [y + 1e-3 for y in ys]  # tiny visual offset
+        # else:
+        #     ys_plot = ys
+        ys_plot = ys
         plt.plot(xs, ys_plot, label=name, color=c, linewidth=2.2, zorder=z)
         # plt.plot(xs, ys, label=name, color=c, zorder=z, **style)
         # z  = 10  if name == "FedAvg" else 3

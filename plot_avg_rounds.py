@@ -5,12 +5,14 @@ import matplotlib.pyplot as plt
 
 
 ALGO_COLOR = {
-    "FedExpSls": "#0000FF",
     "FedAvg": "#008000",
+    "FedAdam": "#2E9787",
+    "FedDyn": "#E377C2",
+    "SCAFFOLD": "#8C564B",
     "FedExp": "#800080",
-    "FedExpProx": "#FF0000",
-    "FedSls": "#D2681D",
-    "FedAdam": "#32A2A2",
+    "FedSLS": "#FF7F0E",
+    "FedExpSLS": "#0000FF",
+    "FedExProx": "#D62728",
 }
 
 FIG_W_PX, FIG_H_PX = 395*2, 316*2

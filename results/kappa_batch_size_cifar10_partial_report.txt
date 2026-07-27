@@ -1,0 +1,7 @@
+dataset=CIFAR10 model=resnet18 batch=128 seed=0 eta_lmax=0.1 round=0 line_search_failure_rate=0.000000
+VERDICT dataset=CIFAR10 model=resnet18 batch=128 seed=0 round=0 R_a=38.839961 R_b=39.212153 failure_rate=0.000000 bound=0.5 R_a_below=False R_b_below=False
+dataset=CIFAR10 model=resnet18 batch=256 seed=0 eta_lmax=0.1 round=0 line_search_failure_rate=0.000000
+VERDICT dataset=CIFAR10 model=resnet18 batch=256 seed=0 round=0 R_a=24.753741 R_b=25.625991 failure_rate=0.000000 bound=0.5 R_a_below=False R_b_below=False
+dataset=CIFAR10 model=resnet18 batch=50 seed=0 eta_lmax=0.1 round=0 line_search_failure_rate=0.000000
+VERDICT dataset=CIFAR10 model=resnet18 batch=50 seed=0 round=0 R_a=35.717319 R_b=44.068322 failure_rate=0.000000 bound=0.5 R_a_below=False R_b_below=False
+Wrote results/kappa_batch_size_cifar10_partial.png
