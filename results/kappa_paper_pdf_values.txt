@@ -1,0 +1,5 @@
+FINAL panel=CIFAR-10/ResNet-18(b=50) round=490 R_a=1.0267113 R_b=1.2929753
+FINAL panel=FEMNIST/Logistic-Reg(b=50) round=490 R_a=1.129623 R_b=2.3933855 R_a_std=0.01978902 R_b_std=0.074993123 seeds=2
+NOTE main_y_limits=(0.0, 3.0) clip 2 plotted mean/curve points or band endpoints above the requested range
+Wrote results/kappa_main.pdf
+Wrote results/kappa_batchsize_appendix.pdf

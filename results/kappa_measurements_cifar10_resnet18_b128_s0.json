@@ -1,0 +1,12 @@
+{
+  "seed": 0,
+  "algorithm": "fedsls",
+  "reset_option": 2,
+  "dataset": "CIFAR10",
+  "model": "resnet18",
+  "batch_size": 128,
+  "eta_lmax": 0.1,
+  "armijo_c": 0.1,
+  "kappa_measure_every": 10,
+  "deterministic_sls_seed": false
+}

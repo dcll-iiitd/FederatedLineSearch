@@ -1,0 +1,6 @@
+Wrote results/kappa_fedsls_training_curves.png
+Wrote results/kappa_fedsls_training_curves.pdf
+FINAL dataset=CIFAR10 batch=50 seed=0 round=499 train_loss=0.495660 test_acc=79.660004
+FINAL dataset=CIFAR10 batch=128 seed=0 round=499 train_loss=0.346081 test_acc=82.599998
+FINAL dataset=CIFAR10 batch=256 seed=0 round=499 train_loss=0.729509 test_acc=71.150002
+FINAL dataset=FEMNIST batch=50 seeds=0,1 round=499 train_loss_mean=1.316509 train_loss_std=0.045038 test_acc_mean=68.030464 test_acc_std=0.761604
