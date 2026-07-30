@@ -288,6 +288,7 @@ elif(dataset=='shakespeare'):
 
 epsilon_fedadagrad = 0.01
 epsilon_fedadam = 0.01
+
   
 if(dataset=='EMNIST'):
     epsilon_fedadagrad = 0.0316
@@ -327,7 +328,17 @@ epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 
 
 mu_algs = {'fedavgm(exp)': 0, 'fedavgm': 0, 'fedadam':0, 'fedprox': mu_fedprox, 'fedprox(exp)': mu_fedprox, 'fedexprox': mu_fedexprox, 'fedavg':0, 'fedadagrad':0, 'fedexp':0, 'scaffold':0, 'scaffold(exp)':0,'fedexpsls':0,'fedsls':0, 'feddyn': 0}
 
+eta_l_algs['fedadamsls'] = eta_l_fedadam
+eta_l_algs['fedadamexpsls'] = eta_l_fedadam
 
+eta_g_algs['fedadamsls'] = eta_g_fedadam
+eta_g_algs['fedadamexpsls'] = 'adaptive'
+
+epsilon_algs['fedadamsls'] = 0
+epsilon_algs['fedadamexpsls'] = epsilon_fedexp
+
+mu_algs['fedadamsls'] = 0
+mu_algs['fedadamexpsls'] = 0
 
 n = len(dataset_train)
 print ("No. of clients", n)
@@ -477,7 +488,7 @@ for alg in algs:
                 mem_mat
             )
 
-            if alg in ('fedsls', 'fedexpsls'):
+            if alg in ('fedsls', 'fedexpsls', 'fedadamsls', 'fedadamexpsls'):
                 grad, search_stats = result
 
                 round_local_steps += search_stats["local_steps"]
@@ -498,7 +509,7 @@ for alg in algs:
             if alg == 'feddyn':
                 feddyn_delta_sum += grad
 
-        if alg in ('fedsls', 'fedexpsls'):
+        if alg in ('fedsls', 'fedexpsls', 'fedadamsls', 'fedadamexpsls'):
             avg_trials_per_step = (
                 round_search_forwards / round_local_steps
                 if round_local_steps > 0
@@ -578,7 +589,7 @@ for alg in algs:
               grad_avg = grad_avg/(torch.sqrt(delta+epsilon_fedadagrad))
 
             
-            if(alg=='fedadam'):
+            if alg in ('fedadam', 'fedadamsls', 'fedadamexpsls'):
 
               grad_avg = 0.1*grad_avg + 0.9*grad_mom
               grad_mom = grad_avg
@@ -633,7 +644,7 @@ for alg in algs:
 
         net_eval = copy.deepcopy(net_glob)
 
-        if(alg=='fedexp' or alg=='scaffold(exp)' or alg=='fedprox(exp)' or alg=='fedavgm(exp)' or alg == 'fedexpsls'):
+        if(alg=='fedexp' or alg=='scaffold(exp)' or alg=='fedprox(exp)' or alg=='fedavgm(exp)' or alg == 'fedexpsls' or alg == 'fedadamexpsls'):
           vector_to_parameters(w_vec_avg, net_eval.parameters())
 
         sum_loss_train = 0

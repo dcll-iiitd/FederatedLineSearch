@@ -798,7 +798,7 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_m
         local = LocalUpdate_FedDyn(args, args_hyperparameters, dataset=dataset)
         return local.train_and_sketch(copy.deepcopy(net_glob), idx, mem_mat)
 
-    if(alg == 'fedexpsls' or alg == 'fedsls'):
+    if alg in ('fedexpsls', 'fedsls', 'fedadamsls', 'fedadamexpsls'):
         local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
 
         grad,search_stats = local.train_and_sketch(copy.deepcopy(net_glob))
