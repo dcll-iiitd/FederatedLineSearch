@@ -1,5 +1,6 @@
 from utils_libs import *
 from SLS.sls import Sls
+from scaffold_sls_new import LocalUpdateScaffoldSlsNew
 def test_img(net_g, datatest, args):
     net_g.eval()
     # testing
@@ -466,12 +467,20 @@ class LocalUpdate(object):
         self.use_gradient_clipping = args_hyperparameters['use_gradient_clipping']
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
+        self.optimizer_lr = (
+            self.lr
+            if args_hyperparameters.get('fedadam_eta_l_override', False)
+            else 0.01
+        )
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
 
     def train_and_sketch(self, net):
         net.train()
 
-        optimizer = torch.optim.SGD(net.parameters(), lr=0.01, weight_decay=self.weight_decay)
+        optimizer = torch.optim.SGD(
+            net.parameters(), lr=self.optimizer_lr,
+            weight_decay=self.weight_decay
+        )
 
         prev_net = copy.deepcopy(net)
 
@@ -581,6 +590,9 @@ class LocalUpdate_Sls(object):
         self.use_gradient_clipping = args_hyperparameters['use_gradient_clipping']
         self.max_norm = args_hyperparameters['max_norm']
         self.weight_decay = args_hyperparameters['weight_decay']
+        self.apply_sls_regularization = args_hyperparameters.get(
+            'apply_sls_regularization', False
+        )
         self.transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4),transforms.RandomHorizontalFlip(),])
 
     def train_and_sketch(self, net):
@@ -588,7 +600,19 @@ class LocalUpdate_Sls(object):
 
         # Historical FedSLS was effectively unclipped because its closure cleared
         # the gradients that had been clipped before optimizer.step().
-        optimizer = Sls(net.parameters(), max_grad_norm=None)
+        optimizer = Sls(
+            net.parameters(),
+            max_grad_norm=(
+                self.max_norm
+                if self.apply_sls_regularization and self.use_gradient_clipping
+                else None
+            ),
+            weight_decay=(
+                self.weight_decay
+                if self.apply_sls_regularization
+                else 0.0
+            )
+        )
         prev_net = copy.deepcopy(net)
 
         step_count = 0
@@ -793,17 +817,43 @@ class LocalUpdate_fedprox(object):
 
 
 
-def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_mat=None):
+def get_grad(net_glob, args, args_hyperparameters, dataset, alg, idx, c,
+             mem_mat=None, round_idx=None, collect_sls_diagnostics=False):
     if alg == 'feddyn':
         local = LocalUpdate_FedDyn(args, args_hyperparameters, dataset=dataset)
         return local.train_and_sketch(copy.deepcopy(net_glob), idx, mem_mat)
 
-    if alg in ('fedexpsls', 'fedsls', 'fedadamsls', 'fedadamexpsls'):
-        local = LocalUpdate_Sls(args, args_hyperparameters, dataset=dataset)
+    if alg in ('fedexpsls', 'fedsls', 'fedexpsls-regularized', 'fedsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized'):
+        sls_hyperparameters = dict(args_hyperparameters)
+        sls_hyperparameters['apply_sls_regularization'] = (
+            alg in ('fedsls-regularized', 'fedexpsls-regularized', 'fedadamsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized')
+        )
+        local = LocalUpdate_Sls(args, sls_hyperparameters, dataset=dataset)
 
         grad,search_stats = local.train_and_sketch(copy.deepcopy(net_glob))
 
         return grad,search_stats
+    if alg in ('scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2', 'scaffoldsls-surrogate'):
+        acceptance_rules = {
+            'scaffoldsls-new': 'original',
+            'scaffoldsls-grad': 'grad_control',
+            'scaffoldsls-noh': 'no_control_reward',
+            'scaffoldsls-rule3': 'drift_slack',
+            'scaffoldsls-rule3-eta2': 'quadratic_drift_slack',
+            'scaffoldsls-surrogate': 'surrogate_armijo',
+        }
+        local = LocalUpdateScaffoldSlsNew(
+            args, args_hyperparameters, dataset=dataset,
+            acceptance_rule=acceptance_rules[alg],
+            beta_slack=args.get('beta_slack'),
+            alpha=args.get('sls_alpha', 0.1),
+            eta_cap=args.get('eta_cap')
+        )
+        return local.train_and_sketch(
+            copy.deepcopy(net_glob), idx, mem_mat, c,
+            round_idx=round_idx,
+            collect_diagnostics=collect_sls_diagnostics
+        )
     if(alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)' or alg=='fedadam'):
 
         local = LocalUpdate(args, args_hyperparameters, dataset=dataset)
@@ -830,9 +880,6 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx,  c, mem_m
          grad = local.train_and_sketch(copy.deepcopy(net_glob))
 
          return grad
-
-
-
 
 
 

@@ -48,6 +48,7 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--pdf", action="store_true")
     ap.add_argument("--band", action="store_true")
+    ap.add_argument("--no-axis-labels", action="store_true")
     args = ap.parse_args()
 
     fig, ax = plt.subplots(
@@ -88,8 +89,9 @@ def main():
         #     hi = [m+s for m,s in zip(ys, stds)]
             # plt.fill_between(xs, lo, hi, alpha=0.15, color=c)
 
-    plt.xlabel("Wall-clock time (seconds)", fontsize=12)
-    plt.ylabel(args.ylabel, fontsize=12)
+    if not args.no_axis_labels:
+        plt.xlabel("Wall-clock time (seconds)", fontsize=12)
+        plt.ylabel(args.ylabel, fontsize=12)
     plt.title(args.title, fontsize=14)
     plt.legend(fontsize=10)
     plt.grid(alpha=0.3)

@@ -34,6 +34,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--metric", choices=["loss", "test_acc"], required=True)
     ap.add_argument("--pdf", action="store_true")
+    ap.add_argument("--no-axis-labels", action="store_true")
     args = ap.parse_args()
 
     # --- lock pixel size exactly (395x316 @ 96 dpi) ---
@@ -82,12 +83,13 @@ def main():
     # leg.get_frame().set_alpha(0.8)          # close to mpl default look
     # leg.get_frame().set_edgecolor("0.8")    # light grey border
     # leg.get_frame().set_linewidth(1.0)
-    ax.set_xlabel("Communication round", fontsize=12)
+    if not args.no_axis_labels:
+        ax.set_xlabel("Communication round", fontsize=12)
 
-    if args.metric == "loss":
-        ax.set_ylabel("Training loss", fontsize=12)
-    else:
-        ax.set_ylabel("Test accuracy (%)", fontsize=12)
+        if args.metric == "loss":
+            ax.set_ylabel("Training loss", fontsize=12)
+        else:
+            ax.set_ylabel("Test accuracy (%)", fontsize=12)
 
     leg = ax.legend(loc=legend_loc, frameon=True, fontsize=12)  # increase legend font
 

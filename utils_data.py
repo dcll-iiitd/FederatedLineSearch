@@ -355,9 +355,6 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
                 test_json = json.load(f)
 
             for client_id in train_json["user_data"]:
-                if len(dataset_train) >= n_client:
-                    break
-
                 if client_id not in test_json["user_data"]:
                     continue
 
@@ -368,14 +365,10 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
                 dataset_train.append(FEMNISTLeafDataset(train_data))
                 dataset_test.append(FEMNISTLeafDataset(test_data))
 
-            if len(dataset_train) >= n_client:
-                break
+        if not dataset_train:
+            raise ValueError("No matching FEMNIST train/test clients were found")
 
-        if len(dataset_train) < n_client:
-            raise ValueError(
-                f"Requested {n_client} FEMNIST clients, but only "
-                f"{len(dataset_train)} matching train/test clients were found"
-            )
+        print(f"Loaded all {len(dataset_train)} matching FEMNIST writer clients")
 
         dataset_test_global = torch.utils.data.ConcatDataset(dataset_test)
     
@@ -450,7 +443,6 @@ def get_dataset(datatype, n_client, n_c, alpha, partition_equal=True):
     
 
     
-
 
 
 

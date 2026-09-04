@@ -36,7 +36,8 @@ class Sls(torch.optim.Optimizer):
                  eta_max=10,
                  bound_step_size=True,
                  line_search_fn="armijo",
-                 max_grad_norm=None):
+                 max_grad_norm=None,
+                 weight_decay=0.0):
         defaults = dict(n_batches_per_epoch=n_batches_per_epoch,
                         init_step_size=init_step_size,
                         c=c,
@@ -46,7 +47,8 @@ class Sls(torch.optim.Optimizer):
                         reset_option=reset_option,
                         eta_max=eta_max,
                         bound_step_size=bound_step_size,
-                        line_search_fn=line_search_fn)
+                        line_search_fn=line_search_fn,
+                        weight_decay=weight_decay)
         super().__init__(params, defaults)
         self.max_grad_norm = max_grad_norm
 
@@ -98,6 +100,15 @@ class Sls(torch.optim.Optimizer):
                 grad.detach().clone() if grad is not None else None
                 for grad in ut.get_grad_list(params)
             ]
+
+            # Match torch.optim.SGD: clip the data gradient first, then add
+            # coupled L2 weight decay to the direction used by the update.
+            if group["weight_decay"] != 0:
+                grad_current = [
+                    (grad.add(param.detach(), alpha=group["weight_decay"])
+                     if grad is not None else None)
+                    for param, grad in zip(params, grad_current)
+                ]
 
             grad_norm = ut.compute_grad_norm(grad_current)
 
