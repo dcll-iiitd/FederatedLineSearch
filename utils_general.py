@@ -1,6 +1,5 @@
 from utils_libs import *
 from SLS.sls import Sls
-from scaffold_sls_new import LocalUpdateScaffoldSlsNew
 def test_img(net_g, datatest, args):
     net_g.eval()
     # testing
@@ -818,7 +817,7 @@ class LocalUpdate_fedprox(object):
 
 
 def get_grad(net_glob, args, args_hyperparameters, dataset, alg, idx, c,
-             mem_mat=None, round_idx=None, collect_sls_diagnostics=False):
+             mem_mat=None):
     if alg == 'feddyn':
         local = LocalUpdate_FedDyn(args, args_hyperparameters, dataset=dataset)
         return local.train_and_sketch(copy.deepcopy(net_glob), idx, mem_mat)
@@ -833,27 +832,6 @@ def get_grad(net_glob, args, args_hyperparameters, dataset, alg, idx, c,
         grad,search_stats = local.train_and_sketch(copy.deepcopy(net_glob))
 
         return grad,search_stats
-    if alg in ('scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2', 'scaffoldsls-surrogate'):
-        acceptance_rules = {
-            'scaffoldsls-new': 'original',
-            'scaffoldsls-grad': 'grad_control',
-            'scaffoldsls-noh': 'no_control_reward',
-            'scaffoldsls-rule3': 'drift_slack',
-            'scaffoldsls-rule3-eta2': 'quadratic_drift_slack',
-            'scaffoldsls-surrogate': 'surrogate_armijo',
-        }
-        local = LocalUpdateScaffoldSlsNew(
-            args, args_hyperparameters, dataset=dataset,
-            acceptance_rule=acceptance_rules[alg],
-            beta_slack=args.get('beta_slack'),
-            alpha=args.get('sls_alpha', 0.1),
-            eta_cap=args.get('eta_cap')
-        )
-        return local.train_and_sketch(
-            copy.deepcopy(net_glob), idx, mem_mat, c,
-            round_idx=round_idx,
-            collect_diagnostics=collect_sls_diagnostics
-        )
     if(alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)' or alg=='fedadam'):
 
         local = LocalUpdate(args, args_hyperparameters, dataset=dataset)

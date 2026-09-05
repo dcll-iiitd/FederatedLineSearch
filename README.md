@@ -2,12 +2,17 @@
 
 This repository contains implementations and experiment utilities for federated optimization with client-side stochastic Armijo line search, together with the fixed-learning-rate and adaptive-server baselines used in the accompanying experiments.
 
-## Repository branches
+## Repository layout
 
-- **`FedSLS_update`** is the primary branch. It contains the algorithm implementations, experiment configurations, and analysis utilities for the main results.
-- **`kappa-accuracy`** contains optional measurement-only instrumentation used to evaluate the empirical $\kappa_f$-accuracy conditions. This instrumentation is disabled by default and is not required to reproduce the main experiments.
+- `main.py`: experiment entry point and server-side algorithm updates.
+- `utils_general.py`: client-local solvers.
+- `utils_data.py`: dataset loading and client partitioning.
+- `utils_models.py`: model definitions.
+- `SLS/`: stochastic Armijo line-search optimizer.
+- `scripts/plotting/`: log parsing, seed averaging, and plotting utilities.
+- `Toy_problem/`: two-dimensional illustrative experiments.
 
-For the main experiments, use `FedSLS_update` as the default branch. Switch to `kappa-accuracy` only when reproducing the $\kappa_f$ measurements documented on that branch.
+Generated logs, CSV files, plots, checkpoints, and local launch helpers are intentionally excluded from version control.
 
 ## Requirements
 
@@ -35,6 +40,8 @@ Implemented algorithm identifiers include:
 ```text
 fedavg, fedexp, scaffold, feddyn,
 fedprox, fedprox(exp), fedexprox,
+fedadamsls, fedadamexpsls-scaled-regularized,
+fedsls-regularized, fedexpsls-regularized,
 fedadam, fedsls, fedexpsls
 ```
 
@@ -93,23 +100,19 @@ recovers the ordinary FedProx aggregation step, while a value greater than one p
 
 The repository includes utilities for extracting and averaging results from the text logs:
 
-- `plot_fl_loss_acc.py`: extracts per-round training loss and test accuracy.
-- `avg_seeds_metrics.py`: computes the per-round mean and standard deviation across seed CSV files.
-- `dump_wallclock_csv.py`: extracts wall-clock metrics from a run log.
-- `avg_wallclock.py`: averages wall-clock curves on a common time grid.
-- `plot_avg_rounds.py`: plots averaged metrics against communication rounds.
-- `plot_avg_time.py`: plots averaged metrics against wall-clock time.
-- `plot_avg_line_search.py`: plots the five-seed mean and standard deviation of the average Armijo trials per local step for FedSLS and FedExpSLS.
+- `scripts/plotting/plot_fl_loss_acc.py`: extracts per-round training loss and test accuracy.
+- `scripts/plotting/avg_seeds_metrics.py`: computes the per-round mean and standard deviation across seed CSV files.
+- `scripts/plotting/dump_wallclock_csv.py`: extracts wall-clock metrics from a run log.
+- `scripts/plotting/avg_wallclock.py`: averages wall-clock curves on a common time grid.
+- `scripts/plotting/plot_avg_rounds.py`: plots averaged metrics against communication rounds.
+- `scripts/plotting/plot_avg_time.py`: plots averaged metrics against wall-clock time.
+- `scripts/plotting/plot_avg_line_search.py`: plots the five-seed mean and standard deviation of the average Armijo trials per local step for FedSLS and FedExpSLS.
 
 For a fair wall-clock comparison, use the same time grid and a common horizon at which every displayed algorithm still has the required number of completed seeds.
 
-## $\kappa_f$-accuracy measurements
+## Generated outputs
 
-The optional `kappa-accuracy` branch contains the flag-gated instrumentation and plotting instructions for measuring the two $\kappa_f$-accuracy ratios.
-
-These measurements intentionally reuse the exact minibatch used by the line search. This reuse is part of the measured theoretical condition and must not be replaced by a fresh or held-out minibatch.
-
-The main experiments on `FedSLS_update` do not require this instrumentation.
+Experiment logs are written under `runs/` by convention. Plotting utilities write derived CSV and figure files under `analysis/`. Both directories are local-only and ignored by Git.
 
 ## Toy problem
 

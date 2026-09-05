@@ -27,3 +27,20 @@ avg_wallclock_csv/
 .DS_Store
 .ipynb_checkpoints/
 
+# Local experiment outputs (never commit generated artifacts)
+/runs/
+/results/
+/analysis/
+/checkpoints/
+*.csv
+*.zip
+results_*.txt
+
+# Local launch helpers and retired prototypes
+/run_queue.sh
+/fedadam.sh
+/GRAPHS commands.sh
+/launch_*.sh
+/scaffold_sls*.py
+/SLS/sls_acc.py
+/SLS/sls_eg.py

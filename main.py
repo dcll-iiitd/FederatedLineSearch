@@ -11,7 +11,6 @@ from utils_general import *
 import time 
 import yaml
 import os
-import csv
 from datetime import datetime #added 18 feb
 
 
@@ -73,24 +72,15 @@ parser.add_argument(
     '--fedadam-tau-outside-sqrt',
     action='store_true'
 )
-parser.add_argument('--sls-alpha', type=float, default=None,
-                    help='Rule 3 gradient sufficient-decrease coefficient (default: 0.1)')
-parser.add_argument('--eta-cap', type=float, default=None,
-                    help='Optional Rule 3 ceiling applied to the initial backtracking trial')
 parser.add_argument('--sls-reset-option', type=int, choices=(0, 1, 2), default=1,
-                    help=('Scaffold-SLS reset: 0=previous accepted step, '
-                          '1=FedSLS gradual increase, 2=initial step'))
-parser.add_argument('--beta-slack', type=float, default=None,
-                    help='Rule 3 drift-slack coefficient')
+                    help=('Line-search reset: 0=previous accepted step, '
+                          '1=gradual increase, 2=initial step'))
 parser.add_argument('--checkpoint-path', type=str, default=None,
                     help='Save a resumable checkpoint at the requested round')
 parser.add_argument('--resume-from', type=str, default=None,
                     help='Resume from a checkpoint; --num_rounds is the total target')
 parser.add_argument('--save-checkpoint-at', type=int, default=None,
                     help='Completed round count at which to save (defaults to --num_rounds)')
-parser.add_argument('--sls-diagnostics-path', type=str, default=None,
-                    help=('Write per-accepted-step Scaffold-SLS diagnostics to CSV. '
-                          'Only valid for Scaffold-SLS algorithms.'))
 
 args_required = parser.parse_args()
 
@@ -133,28 +123,6 @@ if args_required.save_checkpoint_at is not None:
   if not 1 <= args_required.save_checkpoint_at <= args_required.num_rounds:
     parser.error("--save-checkpoint-at must lie in [1, --num_rounds]")
 
-scaffold_sls_algorithms = {
-    'scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2',
-    'scaffoldsls-surrogate'
-}
-if (args_required.sls_diagnostics_path is not None
-        and args_required.algorithm not in scaffold_sls_algorithms):
-  parser.error("--sls-diagnostics-path is only supported for Scaffold-SLS algorithms")
-
-if args_required.algorithm in ('scaffoldsls-rule3', 'scaffoldsls-rule3-eta2'):
-  if args_required.beta_slack is None or args_required.beta_slack < 0:
-    parser.error("scaffoldsls-rule3 requires --beta-slack >= 0")
-  if args_required.sls_alpha is not None and args_required.sls_alpha < 0:
-    parser.error("scaffoldsls-rule3 requires --sls-alpha >= 0")
-  if args_required.eta_cap is not None and args_required.eta_cap <= 0:
-    parser.error("scaffoldsls-rule3 requires --eta-cap > 0")
-else:
-  if args_required.sls_alpha is not None:
-    parser.error("--sls-alpha is only valid with scaffoldsls-rule3")
-  if args_required.eta_cap is not None:
-    parser.error("--eta-cap is only valid with scaffoldsls-rule3")
-  if args_required.beta_slack is not None:
-    parser.error("--beta-slack is only valid with scaffoldsls-rule3")
 
 
 
@@ -213,53 +181,8 @@ args={
 "rounds":num_rounds, 
 "num_clients": num_clients,
 "num_participating_clients":num_participating_clients,
-"sls_alpha": (args_required.sls_alpha if args_required.sls_alpha is not None else 0.1),
-"beta_slack": args_required.beta_slack,
-"eta_cap": args_required.eta_cap,
 "sls_reset_option": args_required.sls_reset_option,
 }
-
-sls_diagnostics_fields = [
-    'round', 'client_id', 'local_step', 'rule', 'eta', 'eta_before_cap', 'eta_after_cap', 'cap_active', 'drift',
-    'grad_norm', 'direction_norm', 'f_before', 'f_after', 'h_before', 'h_after', 'eta_sum',
-    'surrogate_change', 'armijo_rhs', 'armijo_margin', 'accepted_update_norm',
-    'client_update_norm', 'normalized_client_update_norm', 'control_update_norm',
-    'search_failed', 'backtrack_trials', 'beta_slack', 'sls_alpha'
-]
-sls_round_fields = [
-    'round', 'rule', 'beta_slack', 'sls_alpha', 'eta_cap', 'global_train_loss', 'global_train_accuracy',
-    'global_test_loss', 'global_test_accuracy', 'aggregate_client_update_norm',
-    'applied_server_update_norm'
-]
-sls_diagnostics_path = None
-sls_round_diagnostics_path = None
-if args_required.sls_diagnostics_path is not None:
-  sls_diagnostics_path = os.path.abspath(args_required.sls_diagnostics_path)
-  diagnostics_root, diagnostics_ext = os.path.splitext(sls_diagnostics_path)
-  sls_round_diagnostics_path = diagnostics_root + '.rounds' + (diagnostics_ext or '.csv')
-  diagnostics_parent = os.path.dirname(sls_diagnostics_path)
-  os.makedirs(diagnostics_parent, exist_ok=True)
-  append_diagnostics = args_required.resume_from is not None
-  file_has_content = (append_diagnostics and os.path.exists(sls_diagnostics_path)
-                      and os.path.getsize(sls_diagnostics_path) > 0)
-  if not append_diagnostics:
-    with open(sls_diagnostics_path, 'w', newline='') as diagnostics_file:
-      csv.DictWriter(diagnostics_file, fieldnames=sls_diagnostics_fields).writeheader()
-    with open(sls_round_diagnostics_path, 'w', newline='') as round_file:
-      csv.DictWriter(round_file, fieldnames=sls_round_fields).writeheader()
-  elif not file_has_content:
-    with open(sls_diagnostics_path, 'a', newline='') as diagnostics_file:
-      csv.DictWriter(diagnostics_file, fieldnames=sls_diagnostics_fields).writeheader()
-  if append_diagnostics and not (os.path.exists(sls_round_diagnostics_path)
-          and os.path.getsize(sls_round_diagnostics_path) > 0):
-    with open(sls_round_diagnostics_path, 'a', newline='') as round_file:
-      csv.DictWriter(round_file, fieldnames=sls_round_fields).writeheader()
-  print(
-      f"[SLS_DIAGNOSTICS] steps={sls_diagnostics_path} "
-      f"rounds={sls_round_diagnostics_path}",
-      flush=True
-  )
-
 
 net_glob_org = get_model(model,n_c).to(args['device'])
 
@@ -507,12 +430,6 @@ eta_l_algs['fedadamexpsls-scaled-regularized'] = eta_l_fedadam
 eta_l_algs['fedadamexpsls-capped15-regularized'] = eta_l_fedadam
 eta_l_algs['fedsls-regularized'] = eta_l_fedavg
 eta_l_algs['fedexpsls-regularized'] = eta_l_fedexp
-eta_l_algs['scaffoldsls-new'] = eta_l_scaffold
-eta_l_algs['scaffoldsls-grad'] = eta_l_scaffold
-eta_l_algs['scaffoldsls-noh'] = eta_l_scaffold
-eta_l_algs['scaffoldsls-rule3'] = eta_l_scaffold
-eta_l_algs['scaffoldsls-rule3-eta2'] = eta_l_scaffold
-eta_l_algs['scaffoldsls-surrogate'] = eta_l_scaffold
 
 eta_g_algs['fedadamsls'] = eta_g_fedadam
 eta_g_algs['fedadamexpsls'] = 'adaptive'
@@ -521,12 +438,6 @@ eta_g_algs['fedadamexpsls-scaled-regularized'] = 'adaptive'
 eta_g_algs['fedadamexpsls-capped15-regularized'] = 'adaptive'
 eta_g_algs['fedsls-regularized'] = eta_g_fedavg
 eta_g_algs['fedexpsls-regularized'] = 'adaptive'
-eta_g_algs['scaffoldsls-new'] = 1
-eta_g_algs['scaffoldsls-grad'] = 1
-eta_g_algs['scaffoldsls-noh'] = 1
-eta_g_algs['scaffoldsls-rule3'] = 1
-eta_g_algs['scaffoldsls-rule3-eta2'] = 1
-eta_g_algs['scaffoldsls-surrogate'] = 1
 
 epsilon_algs['fedadamsls'] = 0
 epsilon_algs['fedadamexpsls'] = epsilon_fedexp
@@ -535,12 +446,6 @@ epsilon_algs['fedadamexpsls-scaled-regularized'] = epsilon_fedexp
 epsilon_algs['fedadamexpsls-capped15-regularized'] = epsilon_fedexp
 epsilon_algs['fedsls-regularized'] = 0
 epsilon_algs['fedexpsls-regularized'] = epsilon_fedexp
-epsilon_algs['scaffoldsls-new'] = 0
-epsilon_algs['scaffoldsls-grad'] = 0
-epsilon_algs['scaffoldsls-noh'] = 0
-epsilon_algs['scaffoldsls-rule3'] = 0
-epsilon_algs['scaffoldsls-rule3-eta2'] = 0
-epsilon_algs['scaffoldsls-surrogate'] = 0
 
 mu_algs['fedadamsls'] = 0
 mu_algs['fedadamexpsls'] = 0
@@ -549,12 +454,6 @@ mu_algs['fedadamexpsls-scaled-regularized'] = 0
 mu_algs['fedadamexpsls-capped15-regularized'] = 0
 mu_algs['fedsls-regularized'] = 0
 mu_algs['fedexpsls-regularized'] = 0
-mu_algs['scaffoldsls-new'] = 0
-mu_algs['scaffoldsls-grad'] = 0
-mu_algs['scaffoldsls-noh'] = 0
-mu_algs['scaffoldsls-rule3'] = 0
-mu_algs['scaffoldsls-rule3-eta2'] = 0
-mu_algs['scaffoldsls-surrogate'] = 0
 
 n = len(dataset_train)
 print ("No. of clients", n)
@@ -604,7 +503,7 @@ for alg in algs:
 
     
     grad_mom = torch.zeros(d).to(args['device'])
-    if alg in ('scaffold', 'scaffold(exp)', 'scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2', 'scaffoldsls-surrogate'):
+    if alg in ('scaffold', 'scaffold(exp)'):
         mem_mat = torch.zeros((n, d), device='cpu')  ### needed for scaffold
     elif alg == 'feddyn':
         mem_mat = torch.zeros((n, d), device='cpu')
@@ -649,9 +548,6 @@ for alg in algs:
           'eta_g': global_lr,
           'batch_size': args['bs'],
           'local_steps': args['cp'],
-          'beta_slack': args_required.beta_slack,
-                'sls_alpha': args['sls_alpha'],
-                'eta_cap': args_required.eta_cap,
       }
       saved_metadata = checkpoint.get('metadata', {})
       mismatches = {
@@ -715,7 +611,7 @@ for alg in algs:
 
         # Keep SCAFFOLD local LR constant, matching the constant LR used by FedAvg.
         # All non-SCAFFOLD algorithms retain their existing decay behavior.
-        if (alg not in ('scaffold', 'scaffold(exp)', 'scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2', 'scaffoldsls-surrogate')
+        if (alg not in ('scaffold', 'scaffold(exp)')
                 and not (alg == 'fedadam' and args_required.fedadam_constant_client_lr)):
           local_lr = decay * local_lr
         epsilon = decay*decay*epsilon
@@ -755,7 +651,7 @@ for alg in algs:
         client_final_step_sizes = []
 
         
-        if alg in ('scaffold', 'scaffold(exp)', 'scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2', 'scaffoldsls-surrogate'):
+        if alg in ('scaffold', 'scaffold(exp)'):
             c_cpu = torch.zeros((d,), device='cpu')
             for i in range(n):
                 c_cpu = c_cpu + p[i]*mem_mat[i]
@@ -778,11 +674,9 @@ for alg in algs:
                 i,
                 c,
                 mem_mat,
-                round_idx=t,
-                collect_sls_diagnostics=(sls_diagnostics_path is not None)
             )
 
-            if alg in ('fedsls', 'fedexpsls', 'fedsls-regularized', 'fedexpsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized', 'scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2', 'scaffoldsls-surrogate'):
+            if alg in ('fedsls', 'fedexpsls', 'fedsls-regularized', 'fedexpsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized'):
                 grad, search_stats = result
 
                 round_local_steps += search_stats["local_steps"]
@@ -794,12 +688,6 @@ for alg in algs:
                 client_final_step_sizes.append(
                     float(search_stats["final_step_size"])
                 )
-                if search_stats.get("diagnostics"):
-                    with open(sls_diagnostics_path, 'a', newline='') as diagnostics_file:
-                        writer = csv.DictWriter(
-                            diagnostics_file, fieldnames=sls_diagnostics_fields
-                        )
-                        writer.writerows(search_stats["diagnostics"])
             else:
                 grad = result
 
@@ -809,7 +697,7 @@ for alg in algs:
             if alg == 'feddyn':
                 feddyn_delta_sum += grad
 
-        if alg in ('fedsls', 'fedexpsls', 'fedsls-regularized', 'fedexpsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized', 'scaffoldsls-new', 'scaffoldsls-grad', 'scaffoldsls-noh', 'scaffoldsls-rule3', 'scaffoldsls-rule3-eta2', 'scaffoldsls-surrogate'):
+        if alg in ('fedsls', 'fedexpsls', 'fedsls-regularized', 'fedexpsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized'):
             avg_trials_per_step = (
                 round_search_forwards / round_local_steps
                 if round_local_steps > 0
@@ -1073,31 +961,6 @@ for alg in algs:
             flush=True
         )
 
-        if sls_round_diagnostics_path is not None:
-          rule_labels = {
-              'scaffoldsls-new': 'original',
-              'scaffoldsls-grad': 'grad_control',
-              'scaffoldsls-noh': 'no_control_reward',
-              'scaffoldsls-rule3': 'drift_slack',
-              'scaffoldsls-rule3-eta2': 'quadratic_drift_slack',
-              'scaffoldsls-surrogate': 'surrogate_armijo',
-          }
-          with open(sls_round_diagnostics_path, 'a', newline='') as round_file:
-            writer = csv.DictWriter(round_file, fieldnames=sls_round_fields)
-            writer.writerow({
-                'round': t,
-                'rule': rule_labels[alg],
-                'beta_slack': args_required.beta_slack,
-                'sls_alpha': args['sls_alpha'],
-                'eta_cap': args_required.eta_cap,
-                'global_train_loss': float(sum_loss_train),
-                'global_train_accuracy': float(sum_acc_train),
-                'global_test_loss': float(sum_loss_test),
-                'global_test_accuracy': float(sum_acc_test),
-                'aggregate_client_update_norm': aggregate_client_update_norm,
-                'applied_server_update_norm': applied_server_update_norm,
-            })
-
         completed_rounds = t + 1
         checkpoint_round = (
             args_required.save_checkpoint_at
@@ -1121,9 +984,6 @@ for alg in algs:
                   'eta_g': global_lr,
                   'batch_size': args['bs'],
                   'local_steps': args['cp'],
-          'beta_slack': args_required.beta_slack,
-                'sls_alpha': args['sls_alpha'],
-                'eta_cap': args_required.eta_cap,
               },
               'server_model': net_glob.state_dict(),
               'client_state': mem_mat,
