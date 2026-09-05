@@ -868,7 +868,8 @@ for alg in algs:
 
             if alg == 'feddyn':
               feddyn_avg_delta = feddyn_delta_sum / S
-              feddyn_h = feddyn_h - feddyn_alpha * feddyn_avg_delta
+              # The persistent state is an all-client average, so use n here.
+              feddyn_h = feddyn_h - feddyn_alpha * feddyn_delta_sum / n
               grad_avg = feddyn_avg_delta - feddyn_h / feddyn_alpha
 
             eta_g = args_hyperparameters['eta_g']
