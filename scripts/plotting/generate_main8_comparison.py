@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate five-seed round and wall-clock comparisons for the paper algorithms."""
+"""Generate five-seed round comparisons for the main-paper algorithms."""
 
 from __future__ import annotations
 
@@ -59,6 +59,7 @@ ALGORITHMS = {
     },
     "FedDyn": {
         "default": "feddyn_seed{seed}.log",
+        "femnist": "feddyn_corrected_seed{seed}.log",
         "color": "#E377C2",
         "linestyle": "-",
     },
@@ -70,16 +71,6 @@ ALGORITHMS = {
     "FedAdam": {
         "default": "fedadam_canonical_seed{seed}.log",
         "color": "#2E9787",
-        "linestyle": "-",
-    },
-    "FedSLS": {
-        "default": "fedsls_seed{seed}.log",
-        "color": "#FF7F0E",
-        "linestyle": "-",
-    },
-    "FedSLS (reg.)": {
-        "default": "fedsls_regularized_seed{seed}.log",
-        "color": "#BCBD22",
         "linestyle": "-",
     },
     "FedExpSLS": {
@@ -216,7 +207,7 @@ def plot_comparison(
 
 def main() -> None:
     for dataset_key, dataset in DATASETS.items():
-        output_dir = ROOT / "analysis" / dataset_key / "all10_comparison"
+        output_dir = ROOT / "analysis" / dataset_key / "main8_comparison"
         round_series = {"train_loss": {}, "test_acc": {}}
         time_series = {"train_loss": {}, "test_acc": {}}
 
@@ -250,30 +241,16 @@ def main() -> None:
 
         show_labels = bool(dataset["axis_labels"])
         plot_comparison(
-            output_dir / "all10_train_loss_vs_round.pdf",
+            output_dir / "main8_train_loss_vs_round.pdf",
             round_series["train_loss"],
             "Communication round",
             "Training loss",
             show_labels,
         )
         plot_comparison(
-            output_dir / "all10_test_accuracy_vs_round.pdf",
+            output_dir / "main8_test_accuracy_vs_round.pdf",
             round_series["test_acc"],
             "Communication round",
-            "Test accuracy (%)",
-            show_labels,
-        )
-        plot_comparison(
-            output_dir / "all10_train_loss_vs_wallclock.pdf",
-            time_series["train_loss"],
-            "Wall-clock time (seconds)",
-            "Training loss",
-            show_labels,
-        )
-        plot_comparison(
-            output_dir / "all10_test_accuracy_vs_wallclock.pdf",
-            time_series["test_acc"],
-            "Wall-clock time (seconds)",
             "Test accuracy (%)",
             show_labels,
         )

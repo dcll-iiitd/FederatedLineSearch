@@ -54,6 +54,7 @@ parser.add_argument('--dataset', type=str, required=True)
 parser.add_argument('--model', type=str, required=True)
 parser.add_argument('--num_clients', type=int, required=True)
 parser.add_argument('--num_participating_clients', type=int, required=True)
+parser.add_argument('--num_local_steps', type=int, default=20)
 parser.add_argument('--num_rounds', type=int, required=True)
 parser.add_argument('--alpha', type=float, required=True)
 parser.add_argument('--fedexprox-alpha', type=float, default=1.0)
@@ -91,6 +92,9 @@ if args_required.fedadam_tau is not None:
 if args_required.fedadam_eta_l is not None:
     if args_required.fedadam_eta_l <= 0:
         parser.error("--fedadam-eta-l must be greater than zero")
+
+if args_required.num_local_steps <= 0:
+    parser.error("--num_local_steps must be greater than zero")
 
 fedadam_server_algorithms = {
     "fedadam", "fedadamsls", "fedadamexpsls", "fedadamexpsls-regularized", "fedadamexpsls-scaled-regularized", "fedadamexpsls-capped15-regularized"
@@ -176,7 +180,7 @@ dict_results = {} ###dictionary to store results for all algorithms
 
 args={
 "bs":50,   ###batch size
-"cp":20,   ### number of local steps
+"cp":args_required.num_local_steps,   ### number of local steps
 "device":'cuda:0',
 "rounds":num_rounds, 
 "num_clients": num_clients,
