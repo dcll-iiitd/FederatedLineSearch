@@ -1,5 +1,6 @@
 from utils_libs import *
 from SLS.sls import Sls
+import math
 def test_img(net_g, datatest, args):
     net_g.eval()
     # testing
@@ -578,6 +579,233 @@ class LocalUpdate_FedDyn(object):
         return params_delta
 
 
+class LocalUpdate_FedHyper(object):
+    """Client-side scheduler from the released FedHyper implementation.
+
+    The released code adapts the local learning rate from consecutive parameter
+    displacements, rather than directly from the gradients in Equation (20).
+    The first local step uses the configured initial rate; subsequent steps use
+    the released multiplicative update and the paper's absolute clipping bound.
+    """
+
+    def __init__(self, args, args_hyperparameters, dataset=None):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.ldr_train = DataLoader(
+            dataset, batch_size=self.args['bs'], shuffle=True
+        )
+        self.initial_lr = args_hyperparameters['eta_l']
+        self.previous_global_update = args_hyperparameters[
+            'fedhyper_previous_global_update'
+        ]
+        self.gamma_beta = args_hyperparameters['fedhyper_gamma_beta']
+        self.transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+        ])
+        self.use_data_augmentation = args_hyperparameters['use_augmentation']
+
+    def train_and_sketch(self, net):
+        net.train()
+        optimizer = torch.optim.SGD(
+            net.parameters(),
+            lr=self.initial_lr,
+            momentum=0,
+            weight_decay=0,
+        )
+
+        initial_parameters = parameters_to_vector(net.parameters()).detach().clone()
+        previous_local_displacement = None
+        local_lr = self.initial_lr
+        step_count = 0
+
+        while step_count < self.args['cp']:
+            for images, labels in self.ldr_train:
+                images = images.to(self.args['device'])
+                labels = labels.to(self.args['device'])
+
+                if self.use_data_augmentation:
+                    images = self.transform_train(images)
+
+                parameters_before_step = (
+                    parameters_to_vector(net.parameters()).detach().clone()
+                )
+
+                optimizer.zero_grad()
+                output = net(images)
+                loss = self.loss_func(output, labels)
+                loss.backward()
+                optimizer.step()
+
+                with torch.no_grad():
+                    parameters_after_step = parameters_to_vector(net.parameters())
+                    local_displacement = (
+                        parameters_after_step - parameters_before_step
+                    ).detach()
+
+                    if previous_local_displacement is not None:
+                        global_alignment = (
+                            0.1
+                            * torch.dot(
+                                local_displacement,
+                                self.previous_global_update,
+                            ).item()
+                            / self.args['num_participating_clients']
+                        )
+                        local_alignment = torch.dot(
+                            local_displacement,
+                            previous_local_displacement,
+                        ).item()
+
+                        multiplier = min(
+                            1.1,
+                            1.0 + global_alignment + local_alignment,
+                        )
+                        local_lr = min(
+                            self.gamma_beta,
+                            max(1.0 / self.gamma_beta, multiplier * local_lr),
+                        )
+                        for parameter_group in optimizer.param_groups:
+                            parameter_group['lr'] = local_lr
+
+                    previous_local_displacement = local_displacement.clone()
+
+                step_count += 1
+                if step_count >= self.args['cp']:
+                    break
+
+        with torch.no_grad():
+            final_parameters = parameters_to_vector(net.parameters())
+            model_delta = final_parameters - initial_parameters
+
+        return model_delta, {
+            'local_steps': step_count,
+            'final_local_lr': float(local_lr),
+        }
+
+
+class LocalUpdate_DeltaSGD(object):
+    """Delta-SGD client optimizer from the authors' released implementation."""
+
+    def __init__(self, args, args_hyperparameters, dataset=None):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.ldr_train = DataLoader(
+            dataset, batch_size=self.args['bs'], shuffle=True
+        )
+        self.initial_lr = args_hyperparameters['deltasgd_eta0']
+        self.initial_theta = args_hyperparameters['deltasgd_theta0']
+        self.gamma = args_hyperparameters['deltasgd_gamma']
+        self.amplifier = args_hyperparameters['deltasgd_delta']
+        self.eps = args_hyperparameters['deltasgd_eps']
+        self.use_data_augmentation = args_hyperparameters['use_augmentation']
+        self.transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+        ])
+
+    @staticmethod
+    def _difference_norms(net, previous_net):
+        parameter_difference_sq = 0.0
+        gradient_difference_sq = 0.0
+
+        for parameter, previous_parameter in zip(
+                net.parameters(), previous_net.parameters()):
+            if parameter.grad is None or previous_parameter.grad is None:
+                continue
+            parameter_difference_sq += (
+                torch.linalg.vector_norm(
+                    parameter.detach() - previous_parameter.detach()
+                ).item() ** 2
+            )
+            gradient_difference_sq += (
+                torch.linalg.vector_norm(
+                    parameter.grad.detach() - previous_parameter.grad.detach()
+                ).item() ** 2
+            )
+
+        return (
+            math.sqrt(parameter_difference_sq),
+            math.sqrt(gradient_difference_sq),
+        )
+
+    def train_and_sketch(self, net):
+        net.train()
+        previous_net = copy.deepcopy(net)
+        previous_net.to(self.args['device'])
+        previous_net.train()
+
+        initial_parameters = parameters_to_vector(net.parameters()).detach().clone()
+        local_lr = self.initial_lr
+        theta = self.initial_theta
+        step_count = 0
+
+        while step_count < self.args['cp']:
+            for images, labels in self.ldr_train:
+                images = images.to(self.args['device'])
+                labels = labels.to(self.args['device'])
+
+                if self.use_data_augmentation:
+                    images = self.transform_train(images)
+
+                net.zero_grad()
+                previous_net.zero_grad()
+
+                previous_output = previous_net(images)
+                previous_loss = self.loss_func(previous_output, labels)
+                previous_loss.backward()
+
+                output = net(images)
+                loss = self.loss_func(output, labels)
+                loss.backward()
+
+                parameter_difference_norm, gradient_difference_norm = (
+                    self._difference_norms(net, previous_net)
+                )
+                growth_candidate = local_lr * math.sqrt(
+                    1.0 + self.amplifier * theta
+                )
+
+                if (parameter_difference_norm > 0.0
+                        and gradient_difference_norm > 0.0):
+                    curvature_candidate = (
+                        self.gamma
+                        * parameter_difference_norm
+                        / (2.0 * gradient_difference_norm)
+                    )
+                    new_local_lr = min(
+                        growth_candidate,
+                        curvature_candidate,
+                    ) + self.eps
+                else:
+                    new_local_lr = growth_candidate
+
+                theta = new_local_lr / local_lr
+                local_lr = new_local_lr
+
+                # Preserve the current pre-update point and its buffers for the
+                # next same-minibatch gradient-difference calculation.
+                previous_net.load_state_dict(net.state_dict())
+
+                with torch.no_grad():
+                    for parameter in net.parameters():
+                        if parameter.grad is not None:
+                            parameter.add_(parameter.grad, alpha=-local_lr)
+
+                step_count += 1
+                if step_count >= self.args['cp']:
+                    break
+
+        with torch.no_grad():
+            final_parameters = parameters_to_vector(net.parameters())
+            model_delta = final_parameters - initial_parameters
+
+        return model_delta, {
+            'local_steps': step_count,
+            'final_local_lr': float(local_lr),
+        }
+
+
 class LocalUpdate_Sls(object):
     def __init__(self, args, args_hyperparameters, dataset=None):
         self.args = args
@@ -821,6 +1049,18 @@ def get_grad(net_glob, args, args_hyperparameters, dataset, alg, idx, c,
     if alg == 'feddyn':
         local = LocalUpdate_FedDyn(args, args_hyperparameters, dataset=dataset)
         return local.train_and_sketch(copy.deepcopy(net_glob), idx, mem_mat)
+
+    if alg == 'fedhyper':
+        local = LocalUpdate_FedHyper(
+            args, args_hyperparameters, dataset=dataset
+        )
+        return local.train_and_sketch(copy.deepcopy(net_glob))
+
+    if alg == 'deltasgd':
+        local = LocalUpdate_DeltaSGD(
+            args, args_hyperparameters, dataset=dataset
+        )
+        return local.train_and_sketch(copy.deepcopy(net_glob))
 
     if alg in ('fedexpsls', 'fedsls', 'fedexpsls-regularized', 'fedsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized'):
         sls_hyperparameters = dict(args_hyperparameters)

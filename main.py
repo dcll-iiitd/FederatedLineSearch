@@ -58,6 +58,15 @@ parser.add_argument('--num_local_steps', type=int, default=20)
 parser.add_argument('--num_rounds', type=int, required=True)
 parser.add_argument('--alpha', type=float, required=True)
 parser.add_argument('--fedexprox-alpha', type=float, default=1.0)
+parser.add_argument('--fedhyper-alpha0', type=float, default=1.0)
+parser.add_argument('--fedhyper-beta0', type=float, default=None)
+parser.add_argument('--fedhyper-gamma-alpha', type=float, default=3.0)
+parser.add_argument('--fedhyper-gamma-beta', type=float, default=10.0)
+parser.add_argument('--deltasgd-eta0', type=float, default=0.2)
+parser.add_argument('--deltasgd-theta0', type=float, default=1.0)
+parser.add_argument('--deltasgd-gamma', type=float, default=2.0)
+parser.add_argument('--deltasgd-delta', type=float, default=0.1)
+parser.add_argument('--deltasgd-eps', type=float, default=1e-8)
 parser.add_argument('--eta-g', type=float, default=None)
 parser.add_argument('--fedadam-eta-l', type=float, default=None)
 parser.add_argument(
@@ -95,6 +104,25 @@ if args_required.fedadam_eta_l is not None:
 
 if args_required.num_local_steps <= 0:
     parser.error("--num_local_steps must be greater than zero")
+
+if args_required.fedhyper_alpha0 <= 0:
+    parser.error("--fedhyper-alpha0 must be greater than zero")
+if args_required.fedhyper_beta0 is not None and args_required.fedhyper_beta0 <= 0:
+    parser.error("--fedhyper-beta0 must be greater than zero")
+if args_required.fedhyper_gamma_alpha <= 1:
+    parser.error("--fedhyper-gamma-alpha must be greater than one")
+if args_required.fedhyper_gamma_beta <= 1:
+    parser.error("--fedhyper-gamma-beta must be greater than one")
+if args_required.deltasgd_eta0 <= 0:
+    parser.error("--deltasgd-eta0 must be greater than zero")
+if args_required.deltasgd_theta0 <= 0:
+    parser.error("--deltasgd-theta0 must be greater than zero")
+if args_required.deltasgd_gamma <= 0:
+    parser.error("--deltasgd-gamma must be greater than zero")
+if args_required.deltasgd_delta < 0:
+    parser.error("--deltasgd-delta must be nonnegative")
+if args_required.deltasgd_eps < 0:
+    parser.error("--deltasgd-eps must be nonnegative")
 
 fedadam_server_algorithms = {
     "fedadam", "fedadamsls", "fedadamexpsls", "fedadamexpsls-regularized", "fedadamexpsls-scaled-regularized", "fedadamexpsls-capped15-regularized"
@@ -434,6 +462,12 @@ eta_l_algs['fedadamexpsls-scaled-regularized'] = eta_l_fedadam
 eta_l_algs['fedadamexpsls-capped15-regularized'] = eta_l_fedadam
 eta_l_algs['fedsls-regularized'] = eta_l_fedavg
 eta_l_algs['fedexpsls-regularized'] = eta_l_fedexp
+eta_l_algs['fedhyper'] = (
+    args_required.fedhyper_beta0
+    if args_required.fedhyper_beta0 is not None
+    else eta_l_fedavg
+)
+eta_l_algs['deltasgd'] = args_required.deltasgd_eta0
 
 eta_g_algs['fedadamsls'] = eta_g_fedadam
 eta_g_algs['fedadamexpsls'] = 'adaptive'
@@ -442,6 +476,8 @@ eta_g_algs['fedadamexpsls-scaled-regularized'] = 'adaptive'
 eta_g_algs['fedadamexpsls-capped15-regularized'] = 'adaptive'
 eta_g_algs['fedsls-regularized'] = eta_g_fedavg
 eta_g_algs['fedexpsls-regularized'] = 'adaptive'
+eta_g_algs['fedhyper'] = args_required.fedhyper_alpha0
+eta_g_algs['deltasgd'] = 1
 
 epsilon_algs['fedadamsls'] = 0
 epsilon_algs['fedadamexpsls'] = epsilon_fedexp
@@ -450,6 +486,8 @@ epsilon_algs['fedadamexpsls-scaled-regularized'] = epsilon_fedexp
 epsilon_algs['fedadamexpsls-capped15-regularized'] = epsilon_fedexp
 epsilon_algs['fedsls-regularized'] = 0
 epsilon_algs['fedexpsls-regularized'] = epsilon_fedexp
+epsilon_algs['fedhyper'] = 0
+epsilon_algs['deltasgd'] = 0
 
 mu_algs['fedadamsls'] = 0
 mu_algs['fedadamexpsls'] = 0
@@ -458,6 +496,8 @@ mu_algs['fedadamexpsls-scaled-regularized'] = 0
 mu_algs['fedadamexpsls-capped15-regularized'] = 0
 mu_algs['fedsls-regularized'] = 0
 mu_algs['fedexpsls-regularized'] = 0
+mu_algs['fedhyper'] = 0
+mu_algs['deltasgd'] = 0
 
 n = len(dataset_train)
 print ("No. of clients", n)
@@ -515,6 +555,18 @@ for alg in algs:
         mem_mat = None
 
     feddyn_h = torch.zeros(d, device=args['device']) if alg == 'feddyn' else None
+    fedhyper_alpha = (
+        float(
+            args_required.eta_g
+            if args_required.eta_g is not None
+            else args_required.fedhyper_alpha0
+        )
+        if alg == 'fedhyper'
+        else None
+    )
+    fedhyper_previous_update = (
+        torch.zeros(d, device=args['device']) if alg == 'fedhyper' else None
+    )
     
     w_vec_estimate = torch.zeros(d).to(args['device'])
     
@@ -592,6 +644,20 @@ for alg in algs:
         if saved_feddyn_h is None:
           raise ValueError("FedDyn checkpoint is missing feddyn_h")
         feddyn_h.copy_(saved_feddyn_h.to(args['device']))
+      if alg == 'fedhyper':
+        saved_fedhyper_alpha = optimizer_state.get('fedhyper_alpha')
+        saved_fedhyper_previous_update = optimizer_state.get(
+            'fedhyper_previous_update'
+        )
+        if (saved_fedhyper_alpha is None
+                or saved_fedhyper_previous_update is None):
+          raise ValueError(
+              "FedHyper checkpoint is missing its server scheduler state"
+          )
+        fedhyper_alpha = float(saved_fedhyper_alpha)
+        fedhyper_previous_update.copy_(
+            saved_fedhyper_previous_update.to(args['device'])
+        )
       local_lr = checkpoint.get('local_lr', local_lr)
       epsilon = checkpoint.get('epsilon', epsilon)
       restore_rng_state(checkpoint['rng_state'])
@@ -613,14 +679,14 @@ for alg in algs:
         round_start = time.time() #added 18 feb
 
 
-        # Keep SCAFFOLD local LR constant, matching the constant LR used by FedAvg.
-        # All non-SCAFFOLD algorithms retain their existing decay behavior.
-        if (alg not in ('scaffold', 'scaffold(exp)')
+        # SCAFFOLD, FedHyper, and Delta-SGD use constant per-round initial rates.
+        # All other algorithms retain their existing decay behavior.
+        if (alg not in ('scaffold', 'scaffold(exp)', 'fedhyper', 'deltasgd')
                 and not (alg == 'fedadam' and args_required.fedadam_constant_client_lr)):
           local_lr = decay * local_lr
         epsilon = decay*decay*epsilon
 
-        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'feddyn_alpha': feddyn_alpha, 'use_augmentation':True, 'sls_reset_option': args['sls_reset_option'], 'fedadam_eta_l_override': args_required.fedadam_eta_l is not None}
+        args_hyperparameters = {'mu': mu, 'eta_l':local_lr, 'decay': decay, 'weight_decay': weight_decay, 'eta_g': global_lr, 'use_gradient_clipping': use_gradient_clipping, 'max_norm': max_norm, 'epsilon': epsilon, 'feddyn_alpha': feddyn_alpha, 'use_augmentation':True, 'sls_reset_option': args['sls_reset_option'], 'fedadam_eta_l_override': args_required.fedadam_eta_l is not None, 'fedhyper_previous_global_update': fedhyper_previous_update, 'fedhyper_gamma_beta': args_required.fedhyper_gamma_beta, 'deltasgd_eta0': args_required.deltasgd_eta0, 'deltasgd_theta0': args_required.deltasgd_theta0, 'deltasgd_gamma': args_required.deltasgd_gamma, 'deltasgd_delta': args_required.deltasgd_delta, 'deltasgd_eps': args_required.deltasgd_eps}
         
         
         if(dataset=='CIFAR10' or dataset=='CIFAR100' or dataset=='CINIC10'):
@@ -653,6 +719,8 @@ for alg in algs:
         round_total_backwards = 0
         round_failed_searches = 0
         client_final_step_sizes = []
+        fedhyper_client_final_lrs = []
+        deltasgd_client_final_lrs = []
 
         
         if alg in ('scaffold', 'scaffold(exp)'):
@@ -680,7 +748,17 @@ for alg in algs:
                 mem_mat,
             )
 
-            if alg in ('fedsls', 'fedexpsls', 'fedsls-regularized', 'fedexpsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized'):
+            if alg == 'fedhyper':
+                grad, fedhyper_stats = result
+                fedhyper_client_final_lrs.append(
+                    fedhyper_stats['final_local_lr']
+                )
+            elif alg == 'deltasgd':
+                grad, deltasgd_stats = result
+                deltasgd_client_final_lrs.append(
+                    deltasgd_stats['final_local_lr']
+                )
+            elif alg in ('fedsls', 'fedexpsls', 'fedsls-regularized', 'fedexpsls-regularized', 'fedadamsls', 'fedadamexpsls', 'fedadamexpsls-regularized', 'fedadamexpsls-scaled-regularized', 'fedadamexpsls-capped15-regularized'):
                 grad, search_stats = result
 
                 round_local_steps += search_stats["local_steps"]
@@ -739,6 +817,14 @@ for alg in algs:
                 f"max_final_step_size={max_final_step_size:.8g}",
                 flush=True
             )
+        if alg == 'deltasgd':
+            print(
+                f"[DeltaSGD] round={t} "
+                f"mean_final_eta={sum(deltasgd_client_final_lrs) / len(deltasgd_client_final_lrs):.8g} "
+                f"min_final_eta={min(deltasgd_client_final_lrs):.8g} "
+                f"max_final_eta={max(deltasgd_client_final_lrs):.8g}",
+                flush=True,
+            )
         # added 18 feb
         if torch.cuda.is_available(): 
           torch.cuda.synchronize()
@@ -765,6 +851,34 @@ for alg in algs:
               grad_avg = feddyn_avg_delta - feddyn_h / feddyn_alpha
 
             eta_g = args_hyperparameters['eta_g']
+
+            if alg == 'fedhyper':
+              current_fedhyper_update = grad_avg.detach().clone()
+              if t > 0:
+                fedhyper_alpha += torch.dot(
+                    current_fedhyper_update,
+                    fedhyper_previous_update,
+                ).item()
+              fedhyper_alpha = min(
+                  args_required.fedhyper_gamma_alpha,
+                  max(
+                      1.0 / args_required.fedhyper_gamma_alpha,
+                      fedhyper_alpha,
+                  ),
+              )
+              eta_g = fedhyper_alpha
+
+              mean_client_lr = (
+                  sum(fedhyper_client_final_lrs)
+                  / len(fedhyper_client_final_lrs)
+              )
+              print(
+                  f"[FedHyper] round={t} alpha={fedhyper_alpha:.8g} "
+                  f"mean_final_beta={mean_client_lr:.8g} "
+                  f"min_final_beta={min(fedhyper_client_final_lrs):.8g} "
+                  f"max_final_beta={max(fedhyper_client_final_lrs):.8g}",
+                  flush=True,
+              )
 
             grad_norm_avg_running = grad_norm_avg +0.9*0.5*grad_norm_avg_running
 
@@ -905,6 +1019,9 @@ for alg in algs:
 
 
             vector_to_parameters(w_vec_estimate,net_glob.parameters())
+
+            if alg == 'fedhyper':
+              fedhyper_previous_update.copy_(current_fedhyper_update)
         
         
         eval_phase_start = time.time() #added 18 feb
@@ -997,6 +1114,8 @@ for alg in algs:
                   'w_vec_estimate': w_vec_estimate,
                   'grad_norm_avg_running': grad_norm_avg_running,
                   'feddyn_h': feddyn_h,
+                  'fedhyper_alpha': fedhyper_alpha,
+                  'fedhyper_previous_update': fedhyper_previous_update,
               },
               'local_lr': local_lr,
               'epsilon': epsilon,
