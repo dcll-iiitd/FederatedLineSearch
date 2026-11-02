@@ -33,6 +33,12 @@ parser.add_argument('--measure-kappa', action='store_true', default=False)
 parser.add_argument('--kappa-measure-every', type=int, default=10)
 parser.add_argument('--kappa-output', type=str, default=None)
 parser.add_argument('--deterministic-sls-seed', action='store_true', default=False)
+parser.add_argument('--no-augmentation', action='store_true', default=False,
+                    help='Disable training augmentation for explicit SLS experiments')
+parser.add_argument('--sls-drop-last', action='store_true', default=False,
+                    help='Explicit SLS experiment: discard incomplete local batches')
+parser.add_argument('--sls-batch-fraction', type=float, default=None,
+                    help='Explicit SLS experiment: use this fraction of each client dataset per batch')
 
 args_required = parser.parse_args()
 
@@ -44,8 +50,19 @@ if args_required.kappa_measure_every <= 0:
     parser.error("--kappa-measure-every must be greater than zero")
 if args_required.measure_kappa and args_required.algorithm not in ("fedsls", "fedexpsls"):
     parser.error("--measure-kappa is supported only for fedsls and fedexpsls")
-if args_required.measure_kappa and args_required.reset_option != 2:
-    parser.error("--measure-kappa requires --reset-option 2")
+if args_required.measure_kappa and args_required.reset_option not in (1, 2):
+    parser.error("--measure-kappa requires --reset-option 1 or 2")
+if args_required.no_augmentation and args_required.algorithm not in ('fedsls', 'fedexpsls'):
+    parser.error("--no-augmentation is supported only for fedsls and fedexpsls")
+if args_required.sls_drop_last and args_required.algorithm not in ('fedsls', 'fedexpsls'):
+    parser.error("--sls-drop-last is supported only for fedsls and fedexpsls")
+if args_required.sls_batch_fraction is not None:
+    if args_required.algorithm not in ('fedsls', 'fedexpsls'):
+        parser.error("--sls-batch-fraction is supported only for fedsls and fedexpsls")
+    if not np.isfinite(args_required.sls_batch_fraction) or not 0 < args_required.sls_batch_fraction < 1:
+        parser.error("--sls-batch-fraction must be finite and strictly between 0 and 1")
+if not np.isfinite(args_required.eta_lmax) or args_required.eta_lmax <= 0:
+    parser.error("--eta-lmax must be finite and positive")
 if args_required.kappa_output and not args_required.measure_kappa:
     parser.error("--kappa-output requires --measure-kappa")
 if args_required.deterministic_sls_seed and args_required.algorithm not in ("fedsls", "fedexpsls"):
@@ -121,15 +138,47 @@ if measure_kappa:
     writer.writerow([
         "round", "client_id", "local_step", "eta_returned",
         "loss_prev_batch", "loss_curr_batch", "f_ref_prev",
-        "f_ref_curr", "grad_sq_norm", "line_search_failed", "seed"
+        "f_ref_curr", "grad_sq_norm", "line_search_failed", "seed", "batch_size_actual"
     ])
   with open(kappa_metadata_path, "w") as metadata_file:
+    # Option 1 grows the previous accepted step; init_step_size is not a cap.
+    # Each client constructs a fresh optimizer for its 20 local steps. Backtracking
+    # only decreases the step, so gamma**(K/B) gives a rigorous upper envelope.
+    import inspect
+    sls_defaults = inspect.signature(Sls.__init__).parameters
+    sls_gamma = float(sls_defaults['gamma'].default)
+    sls_batches = int(sls_defaults['n_batches_per_epoch'].default)
+    effective_eta_lmax = (
+        max(eta_lmax, 1e-6) * sls_gamma ** (20.0 / sls_batches)
+        if reset_option == 1 else eta_lmax
+    )
     json.dump({
         "seed": seed, "algorithm": algorithm, "reset_option": reset_option,
         "dataset": dataset, "model": model, "batch_size": batch_size,
         "eta_lmax": eta_lmax, "armijo_c": armijo_c,
         "kappa_measure_every": kappa_measure_every,
-        "deterministic_sls_seed": deterministic_sls_seed
+        "deterministic_sls_seed": deterministic_sls_seed,
+        "effective_eta_lmax": effective_eta_lmax,
+        "sls_gamma": sls_gamma, "sls_n_batches_per_epoch": sls_batches,
+        "local_steps": 20,
+        "num_clients": num_clients,
+        "num_participating_clients": num_participating_clients,
+        "num_rounds": num_rounds,
+        "partition_alpha": alpha,
+        "use_augmentation": dataset in ('CIFAR10', 'CIFAR100', 'CINIC10') and not args_required.no_augmentation,
+        "client_sizes": [len(client) for client in dataset_train],
+        "reference_sizes": [len(reference) for reference in kappa_reference_sets],
+        "reference_mode": "eval", "reference_batch_size": 256,
+        "denominator_epsilon": 0.0,
+        "zero_round_denominator_policy": "omit_round",
+        "line_search_failed_policy": "exclude",
+        "drop_last": args_required.sls_drop_last,
+        "sls_batch_fraction": args_required.sls_batch_fraction,
+        "effective_client_batch_sizes": [
+            max(1, int(len(client) * args_required.sls_batch_fraction))
+            if args_required.sls_batch_fraction is not None else min(batch_size, len(client))
+            for client in dataset_train
+        ]
     }, metadata_file, indent=2)
 
 
@@ -141,6 +190,8 @@ dict_results = {} ###dictionary to store results for all algorithms
 
 args={
 "bs":batch_size,   ###batch size
+"sls_drop_last": args_required.sls_drop_last,
+"sls_batch_fraction": args_required.sls_batch_fraction,
 "cp":20,   ### number of local steps
 "device":'cuda:0',
 "rounds":num_rounds, 
@@ -481,6 +532,8 @@ for alg in algs:
         if(dataset=='CIFAR10' or dataset=='CIFAR100' or dataset=='CINIC10'):
           args_hyperparameters['use_augmentation'] = True
         else:
+          args_hyperparameters['use_augmentation'] = False
+        if args_required.no_augmentation:
           args_hyperparameters['use_augmentation'] = False
       
         S = args['num_participating_clients']

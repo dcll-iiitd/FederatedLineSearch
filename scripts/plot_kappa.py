@@ -30,6 +30,9 @@ def load_run(csv_path):
             raise ValueError(f"{metadata_path} does not contain required key {key}")
 
     eta_lmax = float(metadata["eta_lmax"])
+    if int(metadata.get('reset_option', 2)) == 1 and 'effective_eta_lmax' not in metadata:
+        raise ValueError(f'{metadata_path}: reset option 1 needs effective_eta_lmax; init_step_size is not a cap')
+    effective_eta_lmax = float(metadata.get('effective_eta_lmax', eta_lmax))
     armijo_c = float(metadata["armijo_c"])
     if eta_lmax <= 0:
         raise ValueError(f"eta_lmax must be positive in {metadata_path}")
@@ -62,10 +65,12 @@ def load_run(csv_path):
         "path": csv_path,
         "seed": int(metadata["seed"]),
         "eta_lmax": eta_lmax,
+        "effective_eta_lmax": effective_eta_lmax,
         "armijo_c": armijo_c,
         "dataset": metadata.get("dataset", "unknown"),
         "model": metadata.get("model", "unknown"),
         "batch_size": int(metadata.get("batch_size", 50)),
+        "batch_fraction": metadata.get("sls_batch_fraction"),
         "rows": rows,
     }
 
@@ -154,7 +159,7 @@ def main():
         if ratios:
             final_round = max(ratios)
             final_a, final_b = ratios[final_round]
-            run_bound = run["armijo_c"] / (2.0 * run["eta_lmax"])
+            run_bound = run["armijo_c"] / (2.0 * run["effective_eta_lmax"])
             final_failure = failure_rates.get(final_round, math.nan)
             print(
                 f"VERDICT dataset={run['dataset']} model={run['model']} "
@@ -164,7 +169,7 @@ def main():
                 f"R_a_below={final_a < run_bound} R_b_below={final_b < run_bound}"
             )
 
-    caps = {run["eta_lmax"] for run in runs}
+    caps = {run["effective_eta_lmax"] for run in runs}
     armijo_values = {run["armijo_c"] for run in runs}
     if len(caps) != 1 or len(armijo_values) != 1:
         raise ValueError("All overlaid runs must use the same eta_lmax and armijo_c")
@@ -176,7 +181,9 @@ def main():
     eta_groups = defaultdict(lambda: defaultdict(list))
 
     for run, ratios, eta_stats in aggregated:
-        key = (run["dataset"], run["model"], run["batch_size"])
+        fraction = run["batch_fraction"]
+        key = (run["dataset"], run["model"], run["batch_size"],
+               float(fraction) if fraction is not None else -1.0)
 
         for round_number, (ratio_a, ratio_b) in ratios.items():
             ratio_groups[key][round_number].append((ratio_a, ratio_b))
@@ -191,8 +198,11 @@ def main():
     all_positive_ratios = []
 
     for color, key in zip(colors, sorted(ratio_groups)):
-        dataset, model, batch_size = key
-        group_label = f"{dataset}, {model}, b={batch_size}"
+        dataset, model, batch_size, batch_fraction = key
+        group_label = (
+            f"{dataset}, {model}, batch fraction={batch_fraction:g}"
+            if batch_fraction >= 0 else f"{dataset}, {model}, b={batch_size}"
+        )
         round_numbers = sorted(ratio_groups[key])
         ratio_a_mean = []
         ratio_a_std = []

@@ -1,0 +1,10 @@
+KAPPA_F REVIEWER RESPONSE DRAFTS
+Prepared 29 October 2026. The user's 1,500-character budget is shared across concerns.
+Counts below include spaces and punctuation, but exclude the labels and this preamble.
+No manuscript revision has been made by preparing this handout; prospective wording must remain truthful.
+
+COMPACT: 393 characters
+The analysis uses kappa_f-accuracy as a sufficient condition. Conditional tests on CIFAR-10/100, FEMNIST and Shakespeare found that leave-one-out batches satisfy both inequalities at some states, but not uniformly; full batches satisfy them by construction. We will clarify this practical restrictiveness and distinguish the theorem's conditional guarantee from empirical training performance.
+
+DETAILED: 855 characters
+Our analysis uses kappa_f-accuracy as a sufficient condition, not an automatically verified property of every experiment. We evaluated both conditional inequalities at frozen client states on CIFAR-10/100, FEMNIST and Shakespeare, using the same minibatch for gradient, Armijo search, update and loss estimates. Exhaustive leave-one-out evaluation satisfied both inequalities at 54.0%, 71.5%, 50.25% and 20.9% of tested states, respectively, but not at all states; full batches satisfy them by construction. These findings show regime dependence and practical restrictiveness, not uniform stochastic validity. The runs still made training progress, which does not establish the theorem's hypotheses or make this sufficient condition necessary for progress. We will clarify these limits and distinguish the conditional guarantee from empirical performance.

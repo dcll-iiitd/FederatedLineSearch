@@ -585,7 +585,18 @@ class LocalUpdate_Sls(object):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
         self.dataset = dataset
-        self.ldr_train = DataLoader(dataset, batch_size=self.args['bs'], shuffle=True)
+        drop_last = self.args.get('sls_drop_last', False)
+        local_batch_size = self.args['bs']
+        fraction = self.args.get('sls_batch_fraction')
+        if fraction is not None:
+            if not np.isfinite(fraction) or not 0 < fraction < 1 or len(dataset) < 2:
+                raise ValueError('A stochastic SLS batch fraction needs 0 < fraction < 1 and at least two examples')
+            local_batch_size = max(1, int(len(dataset) * fraction))
+        if drop_last and len(dataset) < local_batch_size:
+            raise ValueError('SLS drop_last would leave this client with no batches')
+        self.ldr_train = DataLoader(
+            dataset, batch_size=local_batch_size, shuffle=True, drop_last=drop_last
+        )
         self.lr = args_hyperparameters['eta_l']
         self.use_data_augmentation = args_hyperparameters['use_augmentation']
         self.use_gradient_clipping = args_hyperparameters['use_gradient_clipping']
@@ -810,7 +821,8 @@ class LocalUpdate_Sls(object):
                     raw["f_ref_curr"],
                     raw["grad_sq_norm"],
                     raw["line_search_failed"],
-                    int(context["seed"])
+                    int(context["seed"]),
+                    int(labels.numel())
                 ])
 
                 step_count += 1
